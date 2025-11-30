@@ -23,6 +23,9 @@ import 'pages/notes_list_page.dart';
 import 'pages/promo_page.dart';
 import 'pages/gps_tracker_page.dart';
 import 'pages/location_tracker_page.dart';
+import 'pages/gps_menu_page.dart';
+import 'pages/gps_location_page.dart';
+import 'pages/network_location_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,7 +50,7 @@ void main() async {
     
     final gpsController = GPSController();
     Get.put(gpsController);
-    await gpsController.onInit();
+    // await gpsController.onInit();
     
     runApp(CleaningServiceApp());
   } catch (e) {
@@ -224,12 +227,16 @@ class CleaningServiceApp extends StatelessWidget {
           page: () => const PromoPage(),
         ),
         GetPage(
-          name: GPSTrackerPage.routeName,
-          page: () => const GPSTrackerPage(),
+          name: GPSMenuPage.routeName,
+          page: () => const GPSMenuPage(),
         ),
         GetPage(
-          name: LocationTrackerPage.routeName,
-          page: () => const LocationTrackerPage(),
+          name: GPSLocationPage.routeName,
+          page: () => const GPSLocationPage(),
+        ),
+        GetPage(
+          name: NetworkLocationPage.routeName,
+          page: () => const NetworkLocationPage(),
         ),
       ],
     ));

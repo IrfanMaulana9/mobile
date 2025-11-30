@@ -13,8 +13,7 @@ import 'auth_page.dart';
 import 'notes_page.dart';
 import 'account_page.dart'; // Added import for AccountPage
 import 'promo_page.dart'; // Added import for PromoPage
-import 'gps_tracker_page.dart'; // Added GPS tracker page import
-import 'location_tracker_page.dart'; // added new location tracker import
+import 'gps_menu_page.dart'; // Added GPS menu page import
 
 class HomePage extends StatefulWidget {
   final bool isDark;
@@ -54,7 +53,7 @@ class _HomePageState extends State<HomePage> {
           const BookingHistoryPage(),
           const PromoPage(),
           const NotesPage(),
-          const LocationTrackerPage(), // replaced GPS tracker with Location tracker
+          const GPSMenuPage(), // Updated to use GPS menu page instead of direct location tracker
           const AccountPage(),
         ],
       ),

@@ -30,10 +30,10 @@ class GPSController extends GetxController {
   Future<void> onInit() async {
     super.onInit();
     print('$_logTag Initializing...');
-    await initializeGPS();
+    print('$_logTag Ready for on-demand location access');
   }
 
-  /// Initialize GPS and request permissions
+  /// Initialize GPS and request permissions (called on-demand)
   Future<void> initializeGPS() async {
     isLoading.value = true;
     try {
@@ -41,12 +41,10 @@ class GPSController extends GetxController {
       isGPSInitialized.value = success;
       
       if (success) {
-        // Get initial location
         await getCurrentLocation();
         print('$_logTag GPS initialized successfully');
       } else {
         print('$_logTag GPS initialization failed');
-        await getNetworkLocation();
       }
     } catch (e) {
       print('$_logTag Error during initialization: $e');
