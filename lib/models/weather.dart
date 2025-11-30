@@ -7,6 +7,7 @@ class WeatherData {
   final double windSpeed;
   final String location;
   final DateTime timestamp;
+  final double rainProbability;
 
   WeatherData({
     required this.temperature,
@@ -15,24 +16,37 @@ class WeatherData {
     required this.windSpeed,
     required this.location,
     required this.timestamp,
+    this.rainProbability = 0.0,
   });
 
   String getCleaningRecommendation() {
     if (weatherCode == '0' || weatherCode == '1') {
-      return 'Cuaca cerah - Sempurna untuk cuci karpet & sofa outdoor!';
+      return '☀️ Cuaca cerah sempurna untuk layanan outdoor dan window cleaning. Pencahayaan optimal untuk hasil sempurna.';
     } else if (weatherCode == '2' || weatherCode == '3') {
-      return 'Cuaca berawan - Cocok untuk pel lantai & cat dinding indoor.';
+      return '☁️ Cuaca berawan cocok untuk semua layanan indoor. Kelembapan sedang mendukung proses pengeringan.';
     } else if (weatherCode == '45' || weatherCode == '48') {
-      return 'Berkabut - Tunda aktivitas outdoor, fokus indoor cleaning.';
+      return '🌫️ Berkabut - Prioritaskan layanan indoor. Visibility rendah membuat outdoor cleaning tidak ideal.';
     } else if (weatherCode == '51' || weatherCode == '53' || weatherCode == '55') {
-      return 'Hujan ringan - Hindari outdoor, prioritaskan laundry & indoor service.';
+      return '🌧️ Hujan ringan - Hindari outdoor dan window cleaning. Fokus pada laundry dan deep cleaning indoor. Hujan dapat berlanjut.';
     } else if (weatherCode == '61' || weatherCode == '63' || weatherCode == '65') {
-      return 'Hujan lebat - Tunda semua aktivitas outdoor, fokus indoor.';
+      return '⛈️ Hujan lebat - Sangat tidak disarankan untuk outdoor. Tunda jadwal atau reschedule untuk keselamatan.';
     } else if (weatherCode == '71' || weatherCode == '73' || weatherCode == '75') {
-      return 'Salju - Layanan dibatasi, hubungi untuk jadwal khusus.';
+      return '❄️ Kondisi salju - Layanan dibatasi dan memerlukan persiapan khusus. Hubungi kami untuk diskusi.';
     } else {
-      return 'Cuaca ekstrem - Hubungi kami untuk konsultasi.';
+      return '⚠️ Kondisi cuaca ekstrem - Hubungi kami untuk konsultasi keamanan.';
     }
+  }
+
+  bool isWindSafe() {
+    // Wind speed above 40 km/h is unsafe for outdoor cleaning
+    return windSpeed < 40;
+  }
+
+  String getWindWarning() {
+    if (windSpeed >= 40) {
+      return '⚠️ Angin kencang (${windSpeed.toStringAsFixed(1)} km/h) - Tidak aman untuk outdoor dan window cleaning.';
+    }
+    return '';
   }
 
   String getWeatherDescription() {
@@ -91,6 +105,18 @@ class WeatherData {
         return Icons.ac_unit;
       default:
         return Icons.help;
+    }
+  }
+
+  String getRecommendedServices() {
+    if (weatherCode == '0' || weatherCode == '1') {
+      return 'Outdoor Cleaning, Window Cleaning';
+    } else if (weatherCode == '2' || weatherCode == '3') {
+      return 'Deep Cleaning, Indoor Cleaning';
+    } else if (rainProbability > 50) {
+      return 'Indoor Cleaning, Laundry Service';
+    } else {
+      return 'Indoor Cleaning';
     }
   }
 }

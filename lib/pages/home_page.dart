@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
-import 'mediaquery_demo.dart';
-import 'layoutbuilder_demo.dart';
-import 'animatedcontainer_demo.dart';
-import 'animationcontroller_demo.dart';
+import 'package:get/get.dart';
+import '../controllers/storage_controller.dart';
+import '../controllers/auth_controller.dart';
+import '../controllers/theme_controller.dart';
+import '../controllers/weather_controller.dart';
+import '../data/services.dart';
+import 'booking_page.dart';
+import 'booking_history_page.dart'; // Added import for BookingHistoryPage
 import 'weather_demo.dart';
-import 'performance_comparison_page.dart';
-import 'async_handling_page.dart';
-import 'error_handling_analysis_page.dart';
-import 'performance_report_page.dart';
+import 'performance_stats_page.dart';
+import 'auth_page.dart';
+import 'notes_page.dart';
+import 'account_page.dart'; // Added import for AccountPage
+import 'promo_page.dart'; // Added import for PromoPage
+import 'gps_tracker_page.dart'; // Added GPS tracker page import
+import 'location_tracker_page.dart'; // added new location tracker import
 
 class HomePage extends StatefulWidget {
   final bool isDark;
@@ -21,196 +28,450 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late bool _isDark;
+  int _selectedTab = 0;
+  final storageController = Get.find<StorageController>();
+  final authController = Get.find<AuthController>();
+  final themeController = Get.find<ThemeController>();
+  late final WeatherController weatherController;
 
   @override
   void initState() {
     super.initState();
     _isDark = widget.isDark;
-  }
-
-  Route _fadeSlideRoute(Widget page) {
-    return PageRouteBuilder(
-      pageBuilder: (_, __, ___) => page,
-      transitionsBuilder: (_, animation, secondary, child) {
-        final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
-        final slide = Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero)
-            .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
-        return FadeTransition(
-          opacity: fade,
-          child: SlideTransition(position: slide, child: child),
-        );
-      },
-    );
-  }
-
-  Widget _navTile(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required Widget page,
-    required String heroTag,
-    IconData icon = Icons.cleaning_services,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      color: cs.surface,
-      child: ListTile(
-        leading: Hero(
-          tag: heroTag,
-          child: CircleAvatar(
-            backgroundColor: cs.primary,
-            foregroundColor: cs.onPrimary,
-            child: Icon(icon),
-          ),
-        ),
-        title: Text(title, style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: cs.onSurface.withOpacity(0.7))),
-        trailing: Icon(Icons.chevron_right, color: cs.onSurface),
-        onTap: () => Navigator.of(context).push(_fadeSlideRoute(page)),
-      ),
-    );
+    weatherController = Get.put(WeatherController());
+    weatherController.fetchWeather('Malang');
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Layanan Kebersihan - Demo'),
-        backgroundColor: cs.primary,
-        foregroundColor: cs.onPrimary,
-        actions: [
-          IconButton(
-            tooltip: _isDark ? 'Ubah ke Mode Terang' : 'Ubah ke Mode Gelap',
-            icon: Icon(_isDark ? Icons.light_mode : Icons.dark_mode),
-            onPressed: () {
-              setState(() => _isDark = !_isDark);
-              widget.onChangeTheme?.call(_isDark);
-            },
+      body: IndexedStack(
+        index: _selectedTab,
+        children: [
+          _buildHomePage(context, cs),
+          const BookingHistoryPage(),
+          const PromoPage(),
+          const NotesPage(),
+          const LocationTrackerPage(), // replaced GPS tracker with Location tracker
+          const AccountPage(),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedTab,
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: cs.surface,
+        selectedItemColor: cs.primary,
+        unselectedItemColor: cs.onSurfaceVariant,
+        onTap: (index) => setState(() => _selectedTab = index),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Beranda',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: 'Riwayat',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_bag),
+            label: 'Promo',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.note_alt_outlined),
+            label: 'Catatan',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.location_on),
+            label: 'GPS',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Akun',
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+    );
+  }
+
+  Widget _buildHomePage(BuildContext context, ColorScheme cs) {
+    return CustomScrollView(
+      slivers: [
+        SliverAppBar(
+          pinned: false,
+          floating: true,
+          expandedHeight: 240,
+          backgroundColor: cs.primary,
+          flexibleSpace: FlexibleSpaceBar(
+            background: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [cs.primary, cs.primary.withValues(alpha: 0.8)],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 60, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Pembersihan Profesional',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const Text(
+                              'yang Berkualitas',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Pilih pembersihan profesional yang berkualitas\nuntuk kebersihan yang teramankan',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Theme toggle
+                        IconButton(
+                          tooltip: _isDark ? 'Mode Terang' : 'Mode Gelap',
+                          icon: Icon(
+                            _isDark ? Icons.light_mode : Icons.dark_mode,
+                            color: Colors.white,
+                          ),
+                          onPressed: () {
+                            setState(() => _isDark = !_isDark);
+                            widget.onChangeTheme?.call(_isDark);
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Search bar
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Cari layanan terdekat',
+                          hintStyle: TextStyle(color: cs.onSurfaceVariant),
+                          prefixIcon: Icon(Icons.search, color: cs.primary),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Paket Layanan',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 12,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                if (index >= layanan.length) return SizedBox.shrink();
+                final service = layanan[index];
+                
+                return GestureDetector(
+                  onTap: () {
+                    Get.toNamed(BookingPage.routeName);
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: service.warna.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          service.ikon,
+                          color: service.warna,
+                          size: 40,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        service.nama,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        service.deskripsi,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              childCount: layanan.length,
+            ),
+          ),
+        ),
+        
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Obx(() {
+              final weather = weatherController.weatherData.value;
+              final isLoading = weatherController.isLoading.value;
+              
+              if (isLoading) {
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        cs.primary,
+                        cs.primary.withValues(alpha: 0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(cs.onPrimary),
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  ),
+                );
+              }
+              
+              if (weather == null) {
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        cs.primary,
+                        cs.primary.withValues(alpha: 0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Tidak dapat memuat data cuaca',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: cs.onPrimary,
+                    ),
+                  ),
+                );
+              }
+              
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      cs.primary,
+                      cs.primary.withValues(alpha: 0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cuaca di Malang',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              weather.getWeatherDescription(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onPrimary.withValues(alpha: 0.8),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${weather.temperature.toStringAsFixed(1)}°C',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: cs.onPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: cs.onPrimary,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(
+                                weather.getWeatherIcon(),
+                                color: cs.primary,
+                                size: 24,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Kelembaban',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.primary,
+                                ),
+                              ),
+                              Text(
+                                '${weather.humidity.toStringAsFixed(0)}%',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+        ),
+        
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Keuntungan Berlangganan:',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildBenefitItem(cs, '✓', 'Ahlimu yang berpengalaman', Colors.green),
+                    _buildBenefitItem(cs, '✓', 'Garansi uang kembali 100%', Colors.green),
+                    _buildBenefitItem(cs, '✓', 'Baik pagi hari berbeda tarian', Colors.orange),
+                    _buildBenefitItem(cs, '✓', 'Mudah dijadwalkan dan interaktif', Colors.green),
+                    _buildBenefitItem(cs, '✓', 'Berhasil hasil yang sempurna kami jamin', Colors.green),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+      ],
+    );
+  }
+
+  Widget _buildBenefitItem(ColorScheme cs, String icon, String text, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'API & Weather Integration',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          _navTile(
-            context,
-            title: 'Cuaca & Rekomendasi Cleaning',
-            subtitle: 'API Open-Meteo: Cuaca real-time + saran layanan',
-            page: const WeatherDemoPage(),
-            heroTag: WeatherDemoPage.routeName,
-            icon: Icons.cloud_queue,
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'HTTP Performance Experiments',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          _navTile(
-            context,
-            title: 'HTTP vs Dio Performance',
-            subtitle: 'Bandingkan performa 2 library HTTP dengan multiple tests',
-            page: const PerformanceComparisonPage(),
-            heroTag: PerformanceComparisonPage.routeName,
-            icon: Icons.speed,
-          ),
-          const SizedBox(height: 12),
-          _navTile(
-            context,
-            title: 'Async Handling Experiments',
-            subtitle: 'Bandingkan async-await vs callback chaining',
-            page: const AsyncHandlingPage(),
-            heroTag: AsyncHandlingPage.routeName,
-            icon: Icons.timeline,
-          ),
-          const SizedBox(height: 12),
-          _navTile(
-            context,
-            title: 'Error Handling & Logging',
-            subtitle: 'Analisis error handling HTTP vs Dio dengan logging',
-            page: const ErrorHandlingAnalysisPage(),
-            heroTag: ErrorHandlingAnalysisPage.routeName,
-            icon: Icons.bug_report,
-          ),
-          const SizedBox(height: 12),
-          _navTile(
-            context,
-            title: 'Performance Report',
-            subtitle: 'Laporan lengkap & rekomendasi implementasi',
-            page: const PerformanceReportPage(),
-            heroTag: PerformanceReportPage.routeName,
-            icon: Icons.assessment,
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'UI/UX Demos',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          _navTile(
-            context,
-            title: 'Demo MediaQuery',
-            subtitle: 'UI responsif (breakpoint global) untuk grid layanan',
-            page: const MediaQueryDemoPage(),
-            heroTag: MediaQueryDemoPage.routeName,
-            icon: Icons.grid_view,
-          ),
-          const SizedBox(height: 12),
-          _navTile(
-            context,
-            title: 'Demo LayoutBuilder',
-            subtitle: 'Komponen adaptif (ruang lokal) untuk grid reusable',
-            page: const LayoutBuilderDemoPage(),
-            heroTag: LayoutBuilderDemoPage.routeName,
-            icon: Icons.dashboard_customize,
-          ),
-          const SizedBox(height: 12),
-          _navTile(
-            context,
-            title: 'AnimatedContainer (Implisit)',
-            subtitle: 'Kotak layanan berubah saat ditekan',
-            page: const AnimatedContainerDemoPage(),
-            heroTag: AnimatedContainerDemoPage.routeName,
-            icon: Icons.animation,
-          ),
-          const SizedBox(height: 12),
-          _navTile(
-            context,
-            title: 'AnimationController (Eksplisit)',
-            subtitle: 'Kontrol mulai/henti/ulang + durasi/curve',
-            page: const AnimationControllerDemoPage(),
-            heroTag: AnimationControllerDemoPage.routeName,
-            icon: Icons.tune,
-          ),
-          const SizedBox(height: 24),
           Text(
-            'Catatan:\n• Fokus: HTTP performance, async handling, error handling, responsivitas & animasi.\n• Gunakan dua emulator untuk membandingkan tampilan.\n• Lihat Performance Report untuk rekomendasi implementasi.',
-            style: TextStyle(color: cs.onSurface.withOpacity(0.8)),
+            icon,
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                color: cs.onSurface,
+              ),
+            ),
           ),
         ],
       ),

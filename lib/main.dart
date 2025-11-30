@@ -1,76 +1,237 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'controllers/storage_controller.dart';
+import 'controllers/theme_controller.dart';
+import 'controllers/auth_controller.dart';
+import 'controllers/booking_controller.dart';
+import 'controllers/gps_controller.dart'; // Added GPSController import
+import 'pages/splash_screen.dart';
 import 'pages/home_page.dart';
-import 'pages/mediaquery_demo.dart';
-import 'pages/layoutbuilder_demo.dart';
-import 'pages/animatedcontainer_demo.dart';
-import 'pages/animationcontroller_demo.dart';
 import 'pages/weather_demo.dart';
-import 'pages/performance_comparison_page.dart';
-import 'pages/async_handling_page.dart';
-import 'pages/error_handling_analysis_page.dart';
-import 'pages/performance_report_page.dart';
+import 'pages/booking_page.dart';
+import 'pages/booking_history_page.dart';
+import 'pages/storage_stats_page.dart';
+import 'pages/performance_stats_page.dart';
+import 'pages/auth_page.dart';
+import 'pages/notes_page.dart';
+import 'pages/note_create_standalone_page.dart';
+import 'pages/note_edit_standalone_page.dart';
+import 'pages/notes_list_page.dart';
+import 'pages/promo_page.dart';
+import 'pages/gps_tracker_page.dart';
+import 'pages/location_tracker_page.dart';
 
-void main() {
-  runApp(const CleaningServiceApp());
-}
-
-class CleaningServiceApp extends StatefulWidget {
-  const CleaningServiceApp({super.key});
-
-  @override
-  State<CleaningServiceApp> createState() => _CleaningServiceAppState();
-}
-
-class _CleaningServiceAppState extends State<CleaningServiceApp> {
-  ThemeMode _mode = ThemeMode.system;
-
-  void _setMode(bool dark) {
-    setState(() {
-      _mode = dark ? ThemeMode.dark : ThemeMode.light;
-    });
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  try {
+    await Hive.initFlutter();
+    
+    final storageController = StorageController();
+    Get.put(storageController);
+    await storageController.onInit();
+    
+    final themeController = ThemeController();
+    Get.put(themeController);
+    await themeController.onInit();
+    
+    final authController = AuthController();
+    Get.put(authController);
+    await authController.onInit();
+    
+    final bookingController = BookingController();
+    Get.put(bookingController);
+    
+    final gpsController = GPSController();
+    Get.put(gpsController);
+    await gpsController.onInit();
+    
+    runApp(CleaningServiceApp());
+  } catch (e) {
+    runApp(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text('Failed to initialize app'),
+              const SizedBox(height: 8),
+              Text(
+                e.toString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ));
   }
+}
+
+class CleaningServiceApp extends StatelessWidget {
+  CleaningServiceApp({super.key});
+
+  final themeController = Get.find<ThemeController>();
 
   @override
   Widget build(BuildContext context) {
     final light = ColorScheme.fromSeed(
-      seedColor: Colors.green,
+      seedColor: const Color(0xFF0052A5),
       brightness: Brightness.light,
+      surface: const Color(0xFFFBFBFB),
+      primary: const Color(0xFF1AA5D4),
+      secondary: const Color(0xFFFF9C42),
     );
+    
     final dark = ColorScheme.fromSeed(
-      seedColor: Colors.green,
+      seedColor: const Color(0xFF0052A5),
       brightness: Brightness.dark,
+      surface: const Color(0xFF121212),
+      primary: const Color(0xFF00D9FF),
+      secondary: const Color(0xFFFF9C42),
     );
 
-    return GetMaterialApp(
-      title: 'Layanan Kebersihan',
+    return Obx(() => GetMaterialApp(
+      title: 'CleanServ - Layanan Kebersihan',
+      debugShowCheckedModeBanner: false,
+      
       theme: ThemeData(
         colorScheme: light,
-        scaffoldBackgroundColor: Colors.white,
+        scaffoldBackgroundColor: const Color(0xFFFBFBFB),
         useMaterial3: true,
+        appBarTheme: AppBarTheme(
+          backgroundColor: light.primary,
+          foregroundColor: light.onPrimary,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        cardTheme: CardThemeData(
+          color: light.surface,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: light.primary,
+            foregroundColor: light.onPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+        ),
       ),
+      
       darkTheme: ThemeData(
         colorScheme: dark,
-        scaffoldBackgroundColor: Colors.black,
+        scaffoldBackgroundColor: const Color(0xFF1A1A1A),
         useMaterial3: true,
-      ),
-      themeMode: _mode,
-      routes: {
-        '/': (_) => HomePage(
-              isDark: _mode == ThemeMode.dark,
-              onChangeTheme: _setMode,
+        appBarTheme: AppBarTheme(
+          backgroundColor: dark.primary,
+          foregroundColor: dark.onPrimary,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        cardTheme: CardThemeData(
+          color: dark.surface,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: dark.primary,
+            foregroundColor: dark.onPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
-        MediaQueryDemoPage.routeName: (_) => const MediaQueryDemoPage(),
-        LayoutBuilderDemoPage.routeName: (_) => const LayoutBuilderDemoPage(),
-        AnimatedContainerDemoPage.routeName: (_) => const AnimatedContainerDemoPage(),
-        AnimationControllerDemoPage.routeName: (_) => const AnimationControllerDemoPage(),
-        WeatherDemoPage.routeName: (_) => const WeatherDemoPage(),
-        PerformanceComparisonPage.routeName: (_) => const PerformanceComparisonPage(),
-        AsyncHandlingPage.routeName: (_) => const AsyncHandlingPage(),
-        ErrorHandlingAnalysisPage.routeName: (_) => const ErrorHandlingAnalysisPage(),
-        PerformanceReportPage.routeName: (_) => const PerformanceReportPage(),
-      },
-      initialRoute: '/',
-    );
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+        ),
+      ),
+      
+      themeMode: themeController.themeMode.value,
+      
+      initialRoute: '/splash',
+      
+      getPages: [
+        GetPage(
+          name: '/splash',
+          page: () => const SplashScreen(),
+        ),
+        GetPage(
+          name: '/',
+          page: () => HomePage(
+            isDark: themeController.isDark.value,
+            onChangeTheme: (isDark) {
+              themeController.setTheme(
+                isDark ? ThemeMode.dark : ThemeMode.light
+              );
+            },
+          ),
+        ),
+        GetPage(
+          name: WeatherDemoPage.routeName,
+          page: () => const WeatherDemoPage(),
+        ),
+        GetPage(
+          name: BookingPage.routeName,
+          page: () => const BookingPage(),
+        ),
+        GetPage(
+          name: BookingHistoryPage.routeName,
+          page: () => const BookingHistoryPage(),
+        ),
+        GetPage(
+          name: StorageStatsPage.routeName,
+          page: () => const StorageStatsPage(),
+        ),
+        GetPage(
+          name: PerformanceStatsPage.routeName,
+          page: () => const PerformanceStatsPage(),
+        ),
+        GetPage(
+          name: '/auth',
+          page: () => const AuthPage(),
+        ),
+        GetPage(
+          name: NotesPage.routeName,
+          page: () => NotesPage(),
+        ),
+        GetPage(
+          name: '/note-create',
+          page: () => NoteCreateStandalonePage(),
+        ),
+        GetPage(
+          name: '/note-edit',
+          page: () => NoteEditStandalonePage(),
+        ),
+        GetPage(
+          name: NotesListPage.routeName,
+          page: () => NotesListPage(),
+        ),
+        GetPage(
+          name: PromoPage.routeName,
+          page: () => const PromoPage(),
+        ),
+        GetPage(
+          name: GPSTrackerPage.routeName,
+          page: () => const GPSTrackerPage(),
+        ),
+        GetPage(
+          name: LocationTrackerPage.routeName,
+          page: () => const LocationTrackerPage(),
+        ),
+      ],
+    ));
   }
 }

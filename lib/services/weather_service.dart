@@ -14,7 +14,7 @@ class WeatherService {
       final queryParams = {
         'latitude': latitude.toString(),
         'longitude': longitude.toString(),
-        'current': 'temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m',
+        'current': 'temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,precipitation_probability',
         'timezone': 'Asia/Jakarta',
       };
 
@@ -38,6 +38,7 @@ class WeatherService {
           weatherCode: current['weather_code'].toString(),
           humidity: (current['relative_humidity_2m'] as num).toDouble(),
           windSpeed: (current['wind_speed_10m'] as num).toDouble(),
+          rainProbability: (current['precipitation_probability'] as num?)?.toDouble() ?? 0.0,
           location: location,
           timestamp: DateTime.now(),
         );

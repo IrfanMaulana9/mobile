@@ -1,13 +1,29 @@
-// Ganti: Icons.mop  -> Icons.cleaning_services
-// Ganti: Icons.carpet -> Icons.layers (atau Icons.texture)
 import 'package:flutter/material.dart';
 import '../models/service.dart';
 
 const layanan = <Service>[
-  Service(nama: 'Pel Lantai', ikon: Icons.cleaning_services, warna: Colors.teal),
-  Service(nama: 'Cuci Karpet', ikon: Icons.layers, warna: Colors.orange),
-  Service(nama: 'Cuci Sofa', ikon: Icons.event_seat, warna: Colors.indigo),
-  Service(nama: 'Laundry', ikon: Icons.local_laundry_service, warna: Colors.green),
-  Service(nama: 'Cat Dinding', ikon: Icons.format_paint, warna: Colors.purple),
-  Service(nama: 'Angkut Sampah', ikon: Icons.delete_sweep, warna: Colors.red),
+  Service(
+    nama: 'Indoor Cleaning',
+    ikon: Icons.home,
+    warna: Color(0xFF1AA5D4),
+    deskripsi: 'Pembersihan ruangan dalam kos',
+  ),
+  Service(
+    nama: 'Outdoor Cleaning',
+    ikon: Icons.park,
+    warna: Color(0xFFFF9C42),
+    deskripsi: 'Pembersihan halaman dan area luar',
+  ),
+  Service(
+    nama: 'Deep Cleaning',
+    ikon: Icons.spa,
+    warna: Color(0xFF6C5FE8),
+    deskripsi: 'Pembersihan menyeluruh dan mendalam',
+  ),
+  Service(
+    nama: 'Window Cleaning',
+    ikon: Icons.window,
+    warna: Color(0xFF0FA3B1),
+    deskripsi: 'Pembersihan jendela dan kaca profesional',
+  ),
 ];
