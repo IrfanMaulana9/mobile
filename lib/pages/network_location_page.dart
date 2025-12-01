@@ -40,14 +40,35 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
   Future<void> _getNetworkLocation() async {
     setState(() => _isLoadingLocation = true);
     try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Mengambil data lokasi WiFi...'),
+              ],
+            ),
+          ),
+        ),
+      );
+
       final location = await networkService.getLocationFromNetwork();
 
-      if (location != null) {
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      if (location != null && mounted) {
         controller.networkLocation.value = location;
         controller.currentAddress.value =
             '${location['city']}, ${location['region']}';
         controller.locationType.value = 'network';
-
         controller.currentPosition.value = null;
 
         _mapController.move(
@@ -67,21 +88,24 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
           backgroundColor: Colors.green.shade100,
           duration: const Duration(seconds: 3),
         );
-      } else {
+      } else if (mounted) {
         Get.snackbar(
           'Error',
-          'Gagal mendapatkan lokasi dari Network Provider',
+          'Gagal mendapatkan lokasi. Pastikan WiFi aktif dan terhubung.',
           backgroundColor: Colors.red.shade100,
         );
       }
     } catch (e) {
+      if (mounted) Navigator.pop(context);
       Get.snackbar(
         'Error',
         'Error: $e',
         backgroundColor: Colors.red.shade100,
       );
     } finally {
-      setState(() => _isLoadingLocation = false);
+      if (mounted) {
+        setState(() => _isLoadingLocation = false);
+      }
     }
   }
 
@@ -130,6 +154,12 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                 Icon(Icons.location_off, size: 64, color: cs.onSurfaceVariant),
                 const SizedBox(height: 16),
                 const Text('Lokasi tidak tersedia'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Pastikan WiFi aktif dan terhubung',
+                  style: TextStyle(fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
                   onPressed: _getNetworkLocation,
@@ -154,7 +184,6 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
 
         return Column(
           children: [
-            // Map section
             Expanded(
               flex: 2,
               child: Stack(
@@ -189,7 +218,6 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                       ),
                     ],
                   ),
-                  // Floating map controls
                   Positioned(
                     bottom: 16,
                     right: 16,
@@ -224,7 +252,6 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                 ],
               ),
             ),
-            // Info panel
             Expanded(
               flex: 1,
               child: Container(
@@ -234,7 +261,6 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Location type badge with source info
                       Row(
                         children: [
                           Container(
@@ -275,7 +301,6 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      // Location details
                       _buildInfoRow(
                         cs,
                         'Latitude:',
@@ -311,7 +336,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                       _buildInfoRow(
                         cs,
                         'Negara:',
-                        networkLoc['country'] ?? 'Unknown',
+                        networkLoc['country_name'] ?? networkLoc['country'] ?? 'Unknown',
                       ),
                       const SizedBox(height: 8),
                       _buildInfoRow(
@@ -323,10 +348,9 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                       _buildInfoRow(
                         cs,
                         'Sumber:',
-                        networkLoc['source'] ?? 'Unknown',
+                        networkLoc['provider'] ?? 'Unknown',
                       ),
                       const SizedBox(height: 16),
-                      // Action button
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
