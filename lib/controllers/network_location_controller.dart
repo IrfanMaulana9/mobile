@@ -149,7 +149,7 @@ class NetworkLocationController extends GetxController {
     if (kDebugMode) {
       print('═══════════════════════════════════════════════════════════');
       print('🌐 [NETWORK CONTROLLER] getCurrentNetworkLocation() called');
-      print('🌐 [NETWORK CONTROLLER] Requesting network provider location...');
+      print('🌐 [NETWORK CONTROLLER] Requesting DEVICE network provider location...');
       print('═══════════════════════════════════════════════════════════');
     }
 
@@ -181,9 +181,11 @@ class NetworkLocationController extends GetxController {
 
         if (kDebugMode) {
           print('✅ [NETWORK CONTROLLER] Network location received');
+          print('🌐 [NETWORK CONTROLLER] Source: ${location['source']}');
+          print('🌐 [NETWORK CONTROLLER] Connectivity: ${location['connectivity']}');
           print('🌐 [NETWORK CONTROLLER] Accuracy: ${location['accuracy']}m');
-          print('🌐 [NETWORK CONTROLLER] Source: ${location['connectivity']}');
           print('🌐 [NETWORK CONTROLLER] Lat: ${location['latitude']}, Lng: ${location['longitude']}');
+          print('🌐 [NETWORK CONTROLLER] Address: ${location['city']}, ${location['region']}');
         }
       } else {
         throw Exception('Failed to get network location: Location is null');

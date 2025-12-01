@@ -216,15 +216,15 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: sourceColor.withOpacity(0.2),
+                              color: Colors.blue.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Text(
-                              sourceInfo,
+                            child: const Text(
+                              'Device Network Provider',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: sourceColor,
+                                color: Colors.blue,
                               ),
                             ),
                           ),
@@ -259,13 +259,15 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                         accuracy != null ? '${accuracy.toStringAsFixed(0)} m' : 'Unknown',
                       ),
                       const SizedBox(height: 8),
-                      _buildInfoRow(cs, 'Tipe Akurasi:', sourceAccuracy),
+                      _buildInfoRow(cs, 'Tipe Lokasi:', 'Network Provider Device'),
                       const SizedBox(height: 8),
                       _buildInfoRow(cs, 'Kota:', location['city'] ?? 'Unknown'),
                       const SizedBox(height: 8),
                       _buildInfoRow(cs, 'Region:', location['region'] ?? 'Unknown'),
                       const SizedBox(height: 8),
-                      _buildInfoRow(cs, 'Sumber:', location['source'] ?? 'Unknown'),
+                      _buildInfoRow(cs, 'Alamat:', location['address'] ?? 'Unknown'),
+                      const SizedBox(height: 8),
+                      _buildInfoRow(cs, 'Konektivitas:', location['connectivity'] ?? 'Unknown'),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,

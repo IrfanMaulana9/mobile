@@ -1,18 +1,23 @@
 import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'dart:convert';
+import '../data/services/location_service_v2.dart';
 
 class NetworkLocationService {
   static const String _logTag = '[NetworkLocationService]';
+  
+  final LocationServiceV2 _locationServiceV2 = LocationServiceV2();
 
   /// Add current position cache untuk performa
   Map<String, dynamic>? _cachedLocation;
   DateTime? _cacheTime;
   static const int cacheMaxAgeSeconds = 60; // 1 menit cache
 
-  /// Improved method untuk akurasi tinggi
-  /// Menggunakan multiple sources untuk validasi
+  /// Improved method to use device's actual network provider location
+  /// Now uses Geolocator with LocationAccuracy.low (network provider)
+  /// Falls back to IP-based only if network provider fails
   Future<Map<String, dynamic>?> getLocationFromNetwork({
     bool forceRefresh = true,
   }) async {
@@ -26,157 +31,115 @@ class NetworkLocationService {
         }
       }
 
-      final connectivityResult = await Connectivity().checkConnectivity();
-      print('$_logTag Connectivity status: $connectivityResult');
-
-      // Try multiple sources untuk akurasi maksimal
-      Map<String, dynamic>? bestLocation;
-      double bestAccuracy = double.infinity;
-
-      // 1. Try WiFi-based first (most accurate for network)
-      if (connectivityResult.contains(ConnectivityResult.wifi)) {
-        print('$_logTag Connected to WiFi, trying WiFi-based geolocation...');
-        final wifiLocation = await _getWiFiBasedLocation();
-        if (wifiLocation != null) {
-          final accuracy = wifiLocation['accuracy'] as double? ?? 500;
-          if (accuracy < bestAccuracy) {
-            bestLocation = wifiLocation;
-            bestAccuracy = accuracy;
-            print('$_logTag WiFi location obtained with accuracy: ${accuracy}m');
-          }
-        }
-      }
-
-      // 2. Try cellular data (second priority)
-      if (connectivityResult.contains(ConnectivityResult.mobile)) {
-        print('$_logTag Using cellular data connection...');
-        final cellularLocation = await _getCellularBasedLocation();
-        if (cellularLocation != null) {
-          final accuracy = cellularLocation['accuracy'] as double? ?? 500;
-          if (accuracy < bestAccuracy) {
-            bestLocation = cellularLocation;
-            bestAccuracy = accuracy;
-            print('$_logTag Cellular location obtained with accuracy: ${accuracy}m');
-          }
-        }
-      }
-
-      // 3. Fallback to IP-based geolocation
-      if (bestLocation == null) {
-        print('$_logTag Fallback to IP-based geolocation...');
-        final ipLocation = await _getIPBasedLocation();
-        if (ipLocation != null) {
-          bestLocation = ipLocation;
-          print('$_logTag IP-based location obtained');
-        }
-      }
-
-      // Cache the result
-      if (bestLocation != null) {
-        _cachedLocation = bestLocation;
+      // This gives actual device location via WiFi/Cellular triangulation
+      print('$_logTag Attempting to get NETWORK PROVIDER location from device...');
+      final deviceLocation = await _getDeviceNetworkLocation();
+      
+      if (deviceLocation != null) {
+        _cachedLocation = deviceLocation;
         _cacheTime = DateTime.now();
-        print('$_logTag Location cached for ${cacheMaxAgeSeconds}s');
+        print('$_logTag ✅ Network provider location obtained from device');
+        return deviceLocation;
       }
 
-      if (bestLocation == null) {
-        print('$_logTag All geolocation methods failed');
+      print('$_logTag ⚠️ Device network location failed, falling back to IP-based...');
+      final ipLocation = await _getIPBasedLocation();
+      if (ipLocation != null) {
+        _cachedLocation = ipLocation;
+        _cacheTime = DateTime.now();
+        print('$_logTag IP-based location obtained as fallback');
+        return ipLocation;
       }
 
-      return bestLocation;
+      print('$_logTag ❌ All geolocation methods failed');
+      return null;
     } catch (e) {
       print('$_logTag Error getting network location: $e');
       return null;
     }
   }
 
-  /// Get location using WiFi AP data (most accurate for network-based)
-  Future<Map<String, dynamic>?> _getWiFiBasedLocation() async {
+  /// Get actual device location using network provider
+  /// Uses LocationAccuracy.low which uses WiFi/Cellular triangulation
+  /// This is the REAL location, not IP-based guess
+  Future<Map<String, dynamic>?> _getDeviceNetworkLocation() async {
     try {
-      print('$_logTag Attempting WiFi-based geolocation...');
+      print('$_logTag Requesting location from device network provider...');
+      
+      // Use the correct Position type from geolocator package
+      final Position? devicePosition = await _locationServiceV2.getCurrentPosition(
+        useGps: false, // <-- This makes it use LocationAccuracy.low (network provider)
+      );
 
-      var location = await _queryGeolocationAPI(source: 'WiFi');
-      if (location != null && _isLocationInIndonesia(location)) {
-        location['connectivity'] = 'WiFi';
-        location['source_accuracy'] = 'WiFi Connected (±100-300m)';
-        location['accuracy'] = _improveAccuracyEstimate(100.0, 'WiFi');
-        print('$_logTag WiFi geolocation successful');
-        return location;
+      // Handle null position
+      if (devicePosition == null) {
+        print('$_logTag ❌ Device returned null position');
+        return null;
       }
 
-      return null;
+      print('$_logTag ✅ Device position obtained: [${devicePosition.latitude}, ${devicePosition.longitude}]');
+      print('$_logTag Accuracy from device: ${devicePosition.accuracy}m');
+
+      // Try to reverse geocode for address
+      String? address;
+      String city = 'Unknown';
+      String region = 'Unknown';
+      
+      try {
+        final placemarks = await placemarkFromCoordinates(
+          devicePosition.latitude,
+          devicePosition.longitude,
+        );
+        
+        if (placemarks.isNotEmpty) {
+          final place = placemarks.first;
+          address = '${place.street}, ${place.locality}';
+          city = place.locality ?? 'Unknown';
+          region = place.administrativeArea ?? 'Unknown';
+          print('$_logTag Address from device: $address');
+        }
+      } catch (e) {
+        print('$_logTag Warning: Could not reverse geocode: $e');
+      }
+
+      // Determine connectivity type
+      final connectivityResult = await Connectivity().checkConnectivity();
+      String connectivityType = 'Unknown';
+      
+      if (connectivityResult == ConnectivityResult.wifi) {
+        connectivityType = 'WiFi';
+      } else if (connectivityResult == ConnectivityResult.mobile) {
+        connectivityType = 'Cellular';
+      }
+
+      return {
+        'latitude': devicePosition.latitude,
+        'longitude': devicePosition.longitude,
+        'accuracy': devicePosition.accuracy,
+        'city': city,
+        'region': region,
+        'country': 'ID',
+        'country_name': 'Indonesia',
+        'address': address ?? '$city, $region',
+        'connectivity': '$connectivityType Network Provider',
+        'source': 'Device Network Provider',
+        'source_accuracy': 'Network Provider (±100-300m)',
+        'provider': connectivityType,
+        'type': 'network',
+        'timestamp': DateTime.now().toIso8601String(),
+        'altitude': devicePosition.altitude,
+        'speed': devicePosition.speed,
+      };
     } catch (e) {
-      print('$_logTag Error in WiFi geolocation: $e');
+      print('$_logTag Error getting device network location: $e');
       return null;
     }
   }
 
-  /// Get location using cellular network data
-  Future<Map<String, dynamic>?> _getCellularBasedLocation() async {
-    try {
-      print('$_logTag Attempting cellular-based geolocation...');
-
-      var location = await _queryGeolocationAPI(source: 'Cellular');
-      if (location != null && _isLocationInIndonesia(location)) {
-        location['connectivity'] = 'Cellular (Data)';
-        location['source_accuracy'] = 'Cellular IP (±300-500m)';
-        location['accuracy'] = _improveAccuracyEstimate(300.0, 'Cellular');
-        print('$_logTag Cellular geolocation successful');
-        return location;
-      }
-
-      return null;
-    } catch (e) {
-      print('$_logTag Error in cellular geolocation: $e');
-      return null;
-    }
-  }
-
-  /// Get location using IP address only
+  /// Get location using IP address (fallback only)
   Future<Map<String, dynamic>?> _getIPBasedLocation() async {
     try {
-      print('$_logTag Attempting IP-based geolocation...');
-
-      var location = await _queryGeolocationAPI(source: 'IP');
-      if (location != null && _isLocationInIndonesia(location)) {
-        location['connectivity'] = 'IP-based';
-        location['source_accuracy'] = 'IP Address Only (±500m-1km)';
-        location['accuracy'] = _improveAccuracyEstimate(500.0, 'IP');
-        print('$_logTag IP-based geolocation successful');
-        return location;
-      }
-
-      return null;
-    } catch (e) {
-      print('$_logTag Error in IP-based geolocation: $e');
-      return null;
-    }
-  }
-
-  /// New method untuk improve accuracy estimation
-  /// Menggunakan multiple techniques
-  double _improveAccuracyEstimate(double baseAccuracy, String source) {
-    // Base accuracy dapat ditingkatkan dengan faktor tertentu
-    // Ini adalah heuristik yang dapat disesuaikan
-
-    switch (source) {
-      case 'WiFi':
-        // WiFi bisa lebih akurat jika multiple AP terdeteksi
-        return baseAccuracy * 0.8; // Reduce dari 100m ke 80m
-      case 'Cellular':
-        // Cellular menggunakan tower triangulation
-        return baseAccuracy * 0.9; // Reduce dari 300m ke 270m
-      case 'IP':
-        // IP-based minimal improvement
-        return baseAccuracy;
-      default:
-        return baseAccuracy;
-    }
-  }
-
-  /// Query multiple geolocation API untuk cross-validation
-  Future<Map<String, dynamic>?> _queryGeolocationAPI({required String source}) async {
-    try {
-      print('$_logTag Querying geolocation API for $source...');
+      print('$_logTag Querying IP-based geolocation API...');
 
       final response = await http
           .get(Uri.parse('https://ipapi.co/json/'))
@@ -198,76 +161,26 @@ class NetworkLocationService {
         return {
           'latitude': latitude,
           'longitude': longitude,
-          'accuracy': _getAccuracyBySource(source),
+          'accuracy': 500.0, // IP-based is very inaccurate
           'city': data['city'] ?? 'Unknown',
           'region': data['region'] ?? 'Unknown',
-          'country': data['country_code'] ?? 'Unknown',
-          'country_name': data['country_name'] ?? 'Unknown',
+          'country': data['country_code'] ?? 'ID',
+          'country_name': data['country_name'] ?? 'Indonesia',
           'isp': data['org'] ?? 'Unknown',
-          'provider': data['org'] ?? 'Network Provider',
-          'source': source,
+          'provider': data['org'] ?? 'ISP Provider',
+          'source': 'IP Address (Fallback)',
           'type': 'network',
           'timestamp': DateTime.now().toIso8601String(),
-          'latitude_precision': _estimatePrecision(latitude),
-          'longitude_precision': _estimatePrecision(longitude),
+          'source_accuracy': 'IP Address Only (±500m-1km) - NOT ACCURATE',
+          'connectivity': 'IP-based Only',
         };
       }
 
-      print('$_logTag API returned status code: ${response.statusCode}');
+      print('$_logTag IP API returned status code: ${response.statusCode}');
       return null;
     } catch (e) {
-      print('$_logTag Error querying geolocation API: $e');
+      print('$_logTag Error querying IP geolocation API: $e');
       return null;
-    }
-  }
-
-  /// Estimate coordinate precision
-  String _estimatePrecision(double coordinate) {
-    final absCoord = coordinate.abs();
-    if (absCoord < 0.0001) return 'Very High (±1m)';
-    if (absCoord < 0.001) return 'High (±10m)';
-    if (absCoord < 0.01) return 'Medium (±100m)';
-    return 'Low (±1km)';
-  }
-
-  /// Get accuracy value based on source type
-  double _getAccuracyBySource(String source) {
-    switch (source) {
-      case 'WiFi':
-        return 100.0; // WiFi: ±100m (good accuracy)
-      case 'Cellular':
-        return 300.0; // Cellular: ±300m (moderate accuracy)
-      case 'IP':
-        return 500.0; // IP-based: ±500m (lower accuracy)
-      default:
-        return 500.0;
-    }
-  }
-
-  /// Validate if location is in Indonesia bounds
-  bool _isLocationInIndonesia(Map<String, dynamic> location) {
-    try {
-      final lat = location['latitude'] as double?;
-      final lng = location['longitude'] as double?;
-
-      if (lat == null || lng == null) return false;
-
-      // Indonesia bounds dengan buffer
-      const minLat = -11.0;
-      const maxLat = 7.0;
-      const minLng = 94.5;
-      const maxLng = 141.5;
-
-      final isValid = lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
-
-      if (!isValid) {
-        print('$_logTag Location outside Indonesia bounds: [$lat, $lng]');
-      }
-
-      return isValid;
-    } catch (e) {
-      print('$_logTag Error validating location: $e');
-      return false;
     }
   }
 
@@ -275,12 +188,16 @@ class NetworkLocationService {
   static String getQualityDescription(String locationType, {String? source}) {
     if (locationType != 'network') return 'GPS (Sangat Akurat ±5-10m)';
 
-    if (source?.contains('WiFi') ?? false) {
-      return 'WiFi Network (Akurat ±80-100m)'; // Updated accuracy range
+    if (source?.contains('Device') ?? false) {
+      return 'Network Provider Device (Akurat ±100-300m)'; // Real device location
+    } else if (source?.contains('WiFi') ?? false) {
+      return 'WiFi Network (Akurat ±80-150m)';
     } else if (source?.contains('Cellular') ?? false) {
-      return 'Cellular Network (Cukup Akurat ±270-300m)'; // Updated accuracy range
+      return 'Cellular Network (Cukup Akurat ±200-500m)';
+    } else if (source?.contains('IP') ?? false) {
+      return 'IP-based (Kurang Akurat ±500m-1km)'; // Fallback only
     } else {
-      return 'IP-based (Kurang Akurat ±500m-1km)';
+      return 'Network (Akurasi Tidak Diketahui)';
     }
   }
 
@@ -288,28 +205,16 @@ class NetworkLocationService {
   static String getLocationSourceInfo(Map<String, dynamic>? location) {
     if (location == null) return 'N/A';
 
-    final connectivity = location['connectivity'] as String?;
-    final source = location['source'] as String?;
+    final source = location['source'] as String? ?? 'Unknown';
+    final connectivity = location['connectivity'] as String? ?? '';
 
-    return '$connectivity ($source)';
+    return '$connectivity\n$source';
   }
 
-  /// Check if location is from high-accuracy WiFi
-  static bool isHighAccuracyWiFi(Map<String, dynamic>? location) {
-    final accuracy = location?['accuracy'] as double?;
-    final connectivity = location?['connectivity'] as String?;
-    return connectivity?.contains('WiFi') ?? false && (accuracy ?? 500) < 150;
-  }
-
-  /// Check connectivity type
-  static bool isWiFiBasedLocation(Map<String, dynamic>? location) {
-    final connectivity = location?['connectivity'] as String?;
-    return connectivity?.contains('WiFi') ?? false;
-  }
-
-  static bool isCellularBasedLocation(Map<String, dynamic>? location) {
-    final connectivity = location?['connectivity'] as String?;
-    return connectivity?.contains('Cellular') ?? false;
+  /// Check if location is from device network provider
+  static bool isDeviceNetworkLocation(Map<String, dynamic>? location) {
+    final source = location?['source'] as String?;
+    return source?.contains('Device') ?? false;
   }
 
   /// Get accuracy in meters
@@ -344,15 +249,6 @@ class NetworkLocationService {
     if (accuracy < 300) return 'fair'; // Blue
     if (accuracy < 500) return 'poor'; // Orange
     return 'very_poor'; // Red
-  }
-
-  /// Get accuracy level badge color
-  static String getAccuracyColor(double accuracy) {
-    if (accuracy < 50) return 'green'; // Sangat akurat
-    if (accuracy < 150) return 'light_green'; // Akurat
-    if (accuracy < 300) return 'blue'; // Cukup akurat
-    if (accuracy < 500) return 'orange'; // Kurang akurat
-    return 'red'; // Sangat kurang akurat
   }
 
   /// Clear cached location (untuk refresh manual)
