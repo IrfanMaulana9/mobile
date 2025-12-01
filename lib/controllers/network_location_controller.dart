@@ -6,18 +6,24 @@ import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/services/location_service_v2.dart';
+import '../services/network_location_service.dart';
 
-/// Controller untuk Network Provider Location Tracker
-/// Menggunakan network provider saja (tanpa GPS)
+/// Enhanced controller untuk Network Provider Location Tracker
+/// Dengan accuracy improvements dan better tracking
 class NetworkLocationController extends GetxController {
   final LocationServiceV2 _locationService = LocationServiceV2();
+  final NetworkLocationService _networkLocationService = NetworkLocationService();
 
   final Rx<Position?> _currentPosition = Rx<Position?>(null);
+  final Rx<Map<String, dynamic>?> _networkLocation = Rx<Map<String, dynamic>?>(null);
   final RxBool _isLoading = false.obs;
   final RxString _errorMessage = ''.obs;
   final RxBool _isTracking = false.obs;
   final Rx<LocationPermission> _permissionStatus =
       LocationPermission.denied.obs;
+
+  final RxDouble _currentAccuracy = 0.0.obs;
+  final RxString _accuracyLevel = 'unknown'.obs;
 
   // FlutterMap Controller
   MapController? _mapController;
@@ -34,10 +40,14 @@ class NetworkLocationController extends GetxController {
 
   // Getters
   Position? get currentPosition => _currentPosition.value;
+  Map<String, dynamic>? get networkLocation => _networkLocation.value;
   bool get isLoading => _isLoading.value;
   String get errorMessage => _errorMessage.value;
   bool get isTracking => _isTracking.value;
   LocationPermission get permissionStatus => _permissionStatus.value;
+  double get currentAccuracy => _currentAccuracy.value;
+  String get accuracyLevel => _accuracyLevel.value;
+
   MapController get mapController {
     if (_mapController == null || _isDisposed) {
       try {
@@ -55,9 +65,9 @@ class NetworkLocationController extends GetxController {
   LatLng get mapCenter => _mapCenter.value;
   double get mapZoom => _mapZoom.value;
 
-  double? get latitude => _currentPosition.value?.latitude;
-  double? get longitude => _currentPosition.value?.longitude;
-  double? get accuracy => _currentPosition.value?.accuracy;
+  double? get latitude => _networkLocation.value?['latitude'] ?? _currentPosition.value?.latitude;
+  double? get longitude => _networkLocation.value?['longitude'] ?? _currentPosition.value?.longitude;
+  double? get accuracy => _networkLocation.value?['accuracy'] ?? _currentPosition.value?.accuracy;
   double? get altitude => _currentPosition.value?.altitude;
   double? get speed => _currentPosition.value?.speed;
   DateTime? get timestamp => _currentPosition.value?.timestamp;
@@ -103,7 +113,7 @@ class NetworkLocationController extends GetxController {
     if (kDebugMode) {
       print('═══════════════════════════════════════════════════════════');
       print('🌐 [NETWORK CONTROLLER] _initializeLocation() called');
-      print('🌐 [NETWORK CONTROLLER] Will fetch FRESH position (no cache)');
+      print('🌐 [NETWORK CONTROLLER] Will fetch FRESH position with accuracy');
       print('═══════════════════════════════════════════════════════════');
     }
 
@@ -111,7 +121,6 @@ class NetworkLocationController extends GetxController {
       _isLoading.value = true;
       _errorMessage.value = '';
 
-      // Network provider tidak perlu cek GPS service
       _permissionStatus.value = await _locationService.checkPermission();
 
       if (_permissionStatus.value == LocationPermission.denied ||
@@ -120,16 +129,78 @@ class NetworkLocationController extends GetxController {
       }
 
       if (kDebugMode) {
-        print('🌐 [NETWORK CONTROLLER] Fetching fresh position (no cache)...');
+        print('🌐 [NETWORK CONTROLLER] Fetching network location...');
       }
-      await getCurrentPosition();
+      await getCurrentNetworkLocation();
 
       _isLoading.value = false;
     } catch (e, stackTrace) {
       _errorMessage.value = e.toString();
       _isLoading.value = false;
       if (kDebugMode) {
-        print('❌ [NETWORK CONTROLLER] Location initialization error: ${e.toString()}');
+        print('❌ [NETWORK CONTROLLER] Initialization error: ${e.toString()}');
+        print('❌ [NETWORK CONTROLLER] Stack trace: $stackTrace');
+      }
+    }
+  }
+
+  /// Get current network location dengan accuracy tracking
+  Future<void> getCurrentNetworkLocation() async {
+    if (kDebugMode) {
+      print('═══════════════════════════════════════════════════════════');
+      print('🌐 [NETWORK CONTROLLER] getCurrentNetworkLocation() called');
+      print('🌐 [NETWORK CONTROLLER] Requesting network provider location...');
+      print('═══════════════════════════════════════════════════════════');
+    }
+
+    try {
+      _isLoading.value = true;
+      _errorMessage.value = '';
+
+      // Get network location (with force refresh)
+      final location = await _networkLocationService.getLocationFromNetwork(
+        forceRefresh: true,
+      );
+
+      if (location != null) {
+        _networkLocation.value = location;
+        
+        final acc = location['accuracy'] as double?;
+        if (acc != null) {
+          _currentAccuracy.value = acc;
+          _accuracyLevel.value = NetworkLocationService.getAccuracyLevel(acc);
+        }
+
+        // Update map
+        _updateMapPosition(
+          location['latitude'] as double,
+          location['longitude'] as double,
+        );
+
+        _errorMessage.value = '';
+
+        if (kDebugMode) {
+          print('✅ [NETWORK CONTROLLER] Network location received');
+          print('🌐 [NETWORK CONTROLLER] Accuracy: ${location['accuracy']}m');
+          print('🌐 [NETWORK CONTROLLER] Source: ${location['connectivity']}');
+          print('🌐 [NETWORK CONTROLLER] Lat: ${location['latitude']}, Lng: ${location['longitude']}');
+        }
+      } else {
+        throw Exception('Failed to get network location: Location is null');
+      }
+
+      _isLoading.value = false;
+    } on PermissionDeniedException catch (e) {
+      _errorMessage.value = e.toString();
+      _isLoading.value = false;
+      if (kDebugMode) {
+        print('❌ [NETWORK CONTROLLER] PermissionDeniedException: ${e.toString()}');
+      }
+    } catch (e, stackTrace) {
+      _errorMessage.value = e.toString();
+      _isLoading.value = false;
+      if (kDebugMode) {
+        print('❌ [NETWORK CONTROLLER] Error: ${e.toString()}');
         print('❌ [NETWORK CONTROLLER] Stack trace: $stackTrace');
       }
     }
@@ -156,7 +227,7 @@ class NetworkLocationController extends GetxController {
         }
       } else {
         _errorMessage.value = '';
-        await getCurrentPosition();
+        await getCurrentNetworkLocation();
       }
 
       _isLoading.value = false;
@@ -178,84 +249,9 @@ class NetworkLocationController extends GetxController {
     await _locationService.openAppSettings();
   }
 
+  /// Keep old method for backward compatibility
   Future<void> getCurrentPosition() async {
-    if (kDebugMode) {
-      print('═══════════════════════════════════════════════════════════');
-      print('🌐 [NETWORK CONTROLLER] getCurrentPosition() called');
-      print('🌐 [NETWORK CONTROLLER] useGps parameter: false (NETWORK ONLY)');
-      print('═══════════════════════════════════════════════════════════');
-    }
-
-    try {
-      _isLoading.value = true;
-      _errorMessage.value = '';
-
-      bool hasPermission = await _locationService.isPermissionGranted();
-      if (!hasPermission) {
-        if (kDebugMode) {
-          print('❌ [NETWORK CONTROLLER] Permission not granted');
-        }
-      }
-
-      if (kDebugMode) {
-        print('🌐 [NETWORK CONTROLLER] Calling LocationService.getCurrentPosition(useGps: false)');
-      }
-
-      Position? position = await _locationService.getCurrentPosition(
-        useGps: false, // Selalu network provider - HARUS FALSE
-      );
-
-      if (kDebugMode) {
-        if (position != null) {
-          print('✅ [NETWORK CONTROLLER] Position received');
-          print('🌐 [NETWORK CONTROLLER] Accuracy: ${position.accuracy}m');
-          print('🌐 [NETWORK CONTROLLER] Lat: ${position.latitude}, Lng: ${position.longitude}');
-          if (position.accuracy < 50) {
-            print('⚠️ [NETWORK CONTROLLER] WARNING: Low accuracy suggests GPS was used!');
-          } else {
-            print('✅ [NETWORK CONTROLLER] High accuracy confirms NETWORK source');
-          }
-        } else {
-          print('❌ [NETWORK CONTROLLER] No position received');
-        }
-        print('═══════════════════════════════════════════════════════════');
-      }
-
-      if (position != null) {
-        _currentPosition.value = position;
-        _updateMapPosition(position);
-        _errorMessage.value = '';
-      } else {
-        throw Exception('Failed to get current position: Position is null');
-      }
-
-      _isLoading.value = false;
-    } on PermissionDeniedException catch (e) {
-      _errorMessage.value = e.toString();
-      _isLoading.value = false;
-      if (kDebugMode) {
-        print('❌ [NETWORK CONTROLLER] PermissionDeniedException: ${e.toString()}');
-      }
-    } on LocationServiceDisabledException catch (e) {
-      _errorMessage.value = e.toString();
-      _isLoading.value = false;
-      if (kDebugMode) {
-        print('❌ [NETWORK CONTROLLER] LocationServiceDisabledException: ${e.toString()}');
-      }
-    } on TimeoutException catch (e) {
-      _errorMessage.value = e.toString();
-      _isLoading.value = false;
-      if (kDebugMode) {
-        print('❌ [NETWORK CONTROLLER] TimeoutException: ${e.toString()}');
-      }
-    } catch (e, stackTrace) {
-      _errorMessage.value = e.toString();
-      _isLoading.value = false;
-      if (kDebugMode) {
-        print('❌ [NETWORK CONTROLLER] Error: ${e.toString()}');
-        print('❌ [NETWORK CONTROLLER] Stack trace: $stackTrace');
-      }
-    }
+    await getCurrentNetworkLocation();
   }
 
   Future<void> getLastKnownPosition() async {
@@ -264,7 +260,7 @@ class NetworkLocationController extends GetxController {
 
       if (position != null) {
         _currentPosition.value = position;
-        _updateMapPosition(position);
+        _updateMapPosition(position.latitude, position.longitude);
       }
     } catch (e) {
       if (kDebugMode) {
@@ -277,16 +273,12 @@ class NetworkLocationController extends GetxController {
     if (kDebugMode) {
       print('═══════════════════════════════════════════════════════════');
       print('🌐 [NETWORK CONTROLLER] startTracking() called');
-      print('🌐 [NETWORK CONTROLLER] useGps parameter: false (NETWORK ONLY)');
       print('═══════════════════════════════════════════════════════════');
     }
 
     try {
       bool hasPermission = await _locationService.isPermissionGranted();
       if (!hasPermission) {
-        if (kDebugMode) {
-          print('🌐 [NETWORK CONTROLLER] Requesting permission (requireGps: false)');
-        }
         hasPermission = await _locationService.requestPermission(
           requireGps: false,
         );
@@ -306,12 +298,8 @@ class NetworkLocationController extends GetxController {
       _isTracking.value = true;
       _errorMessage.value = '';
 
-      if (kDebugMode) {
-        print('🌐 [NETWORK CONTROLLER] Starting position stream (useGps: false)');
-      }
-
       Stream<Position>? positionStream = _locationService.getPositionStream(
-        useGps: false, // Selalu network provider - HARUS FALSE
+        useGps: false,
         distanceFilter: 10,
       );
 
@@ -320,7 +308,7 @@ class NetworkLocationController extends GetxController {
         _positionSubscription = positionStream.listen(
           (Position position) {
             _currentPosition.value = position;
-            _updateMapPosition(position);
+            _updateMapPosition(position.latitude, position.longitude);
           },
           onError: (error) {
             _errorMessage.value = error.toString();
@@ -330,19 +318,7 @@ class NetworkLocationController extends GetxController {
           },
         );
       } else {
-        throw Exception('Failed to start position stream: Position stream is null');
-      }
-    } on PermissionDeniedException catch (e) {
-      _errorMessage.value = e.toString();
-      _isTracking.value = false;
-      if (kDebugMode) {
-        print('❌ [NETWORK CONTROLLER] PermissionDeniedException: ${e.toString()}');
-      }
-    } on LocationServiceDisabledException catch (e) {
-      _errorMessage.value = e.toString();
-      _isTracking.value = false;
-      if (kDebugMode) {
-        print('❌ [NETWORK CONTROLLER] LocationServiceDisabledException: ${e.toString()}');
+        throw Exception('Failed to start position stream');
       }
     } catch (e, stackTrace) {
       _errorMessage.value = e.toString();
@@ -365,10 +341,10 @@ class NetworkLocationController extends GetxController {
     _stopTracking();
   }
 
-  void _updateMapPosition(Position position) {
+  void _updateMapPosition(double latitude, double longitude) {
     if (_isDisposed || !_canUseMapController()) return;
 
-    final newCenter = LatLng(position.latitude, position.longitude);
+    final newCenter = LatLng(latitude, longitude);
     _mapCenter.value = newCenter;
 
     try {
@@ -390,13 +366,10 @@ class NetworkLocationController extends GetxController {
     if (_isDisposed || !_canUseMapController()) return;
 
     _mapZoom.value = zoom;
-    if (_currentPosition.value != null) {
+    if (latitude != null && longitude != null) {
       try {
         _mapController?.move(
-          LatLng(
-            _currentPosition.value!.latitude,
-            _currentPosition.value!.longitude,
-          ),
+          LatLng(latitude!, longitude!),
           zoom,
         );
       } catch (e) {
@@ -420,10 +393,9 @@ class NetworkLocationController extends GetxController {
   void moveToCurrentPosition() {
     if (_isDisposed || !_canUseMapController()) return;
 
-    if (_currentPosition.value != null) {
+    if (latitude != null && longitude != null) {
       try {
-        final position = _currentPosition.value!;
-        final center = LatLng(position.latitude, position.longitude);
+        final center = LatLng(latitude!, longitude!);
         _mapController?.move(center, _mapZoom.value);
         _mapCenter.value = center;
       } catch (e) {
@@ -435,7 +407,8 @@ class NetworkLocationController extends GetxController {
   }
 
   Future<void> refreshPosition() async {
-    await getCurrentPosition();
+    _networkLocationService.clearCache();
+    await getCurrentNetworkLocation();
   }
 
   void resetMapController() {
@@ -456,7 +429,6 @@ class NetworkLocationController extends GetxController {
     }
   }
 
-  /// Get error action button info berdasarkan konteks error
   Map<String, dynamic> getErrorAction() {
     final error = _errorMessage.value.toLowerCase();
 
@@ -484,14 +456,22 @@ class NetworkLocationController extends GetxController {
       return {
         'label': 'Coba Lagi',
         'icon': Icons.refresh,
-        'action': getCurrentPosition,
+        'action': getCurrentNetworkLocation,
       };
     }
 
     return {
       'label': 'Coba Lagi',
       'icon': Icons.refresh,
-      'action': getCurrentPosition,
+      'action': getCurrentNetworkLocation,
     };
   }
+
+  String? get selectedAddressForBooking {
+    return _networkLocation.value?['address'] ?? 
+           _networkLocation.value?['city'];
+  }
+
+  double? get selectedLatitudeForBooking => latitude;
+  double? get selectedLongitudeForBooking => longitude;
 }

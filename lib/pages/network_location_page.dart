@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 import '../controllers/gps_controller.dart';
+import '../controllers/network_location_controller.dart';
 import '../services/network_location_service.dart';
 
 class NetworkLocationPage extends StatefulWidget {
@@ -15,18 +16,13 @@ class NetworkLocationPage extends StatefulWidget {
 }
 
 class _NetworkLocationPageState extends State<NetworkLocationPage> {
-  final controller = Get.put(GPSController());
-  final networkService = NetworkLocationService();
+  final networkController = Get.put(NetworkLocationController());
   late MapController _mapController;
-  bool _isLoadingLocation = false;
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _getNetworkLocation();
-    });
   }
 
   @override
@@ -35,81 +31,11 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
     super.dispose();
   }
 
-  Future<void> _getNetworkLocation() async {
-    setState(() => _isLoadingLocation = true);
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Dialog(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Mengambil data lokasi...'),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      final location = await networkService.getLocationFromNetwork();
-
-      if (mounted) {
-        Navigator.pop(context);
-      }
-
-      if (location != null && mounted) {
-        controller.networkLocation.value = location;
-        controller.currentAddress.value =
-            '${location['city']}, ${location['region']}';
-        controller.locationType.value = 'network';
-        controller.currentPosition.value = null;
-
-        _mapController.move(
-          LatLng(location['latitude'], location['longitude']),
-          17.0,
-        );
-
-        final sourceInfo = NetworkLocationService.getLocationSourceInfo(location);
-        final accuracy = NetworkLocationService.getAccuracy(location);
-        final sourceAccuracy = NetworkLocationService.getSourceAccuracyDescription(location);
-        
-        Get.snackbar(
-          'Sukses',
-          'Lokasi diperoleh\nSumber: $sourceInfo\nAkurasi: $sourceAccuracy',
-          backgroundColor: Colors.green.shade100,
-          duration: const Duration(seconds: 4),
-        );
-      } else if (mounted) {
-        Get.snackbar(
-          'Error',
-          'Gagal mendapatkan lokasi. Pastikan internet aktif (WiFi atau data seluler).',
-          backgroundColor: Colors.red.shade100,
-        );
-      }
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      Get.snackbar(
-        'Error',
-        'Error: $e',
-        backgroundColor: Colors.red.shade100,
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingLocation = false);
-      }
-    }
-  }
-
   void _centerMap() {
-    final networkLoc = controller.networkLocation.value;
-    if (networkLoc != null) {
+    final location = networkController.networkLocation;
+    if (location != null) {
       _mapController.move(
-        LatLng(networkLoc['latitude'], networkLoc['longitude']),
+        LatLng(location['latitude'], location['longitude']),
         17.0,
       );
     }
@@ -129,19 +55,37 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
     }
   }
 
+  Color _getAccuracyColor(String level) {
+    switch (level) {
+      case 'excellent':
+        return Colors.green;
+      case 'good':
+        return Colors.lightGreen;
+      case 'fair':
+        return Colors.blue;
+      case 'poor':
+        return Colors.orange;
+      case 'very_poor':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Network Location'),
+        title: const Text('Network Location Tracker'),
         centerTitle: true,
       ),
       body: Obx(() {
-        final networkLoc = controller.networkLocation.value;
+        final location = networkController.networkLocation;
+        final isLoading = networkController.isLoading;
 
-        if (_isLoadingLocation) {
+        if (isLoading) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -150,13 +94,13 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                   valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
                 ),
                 const SizedBox(height: 16),
-                const Text('Mendapatkan lokasi...'),
+                const Text('Mendapatkan lokasi dengan akurasi tinggi...'),
               ],
             ),
           );
         }
 
-        if (networkLoc == null) {
+        if (location == null) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -172,7 +116,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
-                  onPressed: _getNetworkLocation,
+                  onPressed: networkController.getCurrentNetworkLocation,
                   icon: const Icon(Icons.location_searching),
                   label: const Text('Dapatkan Lokasi'),
                 ),
@@ -181,12 +125,11 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
           );
         }
 
-        final currentLocation =
-            LatLng(networkLoc['latitude'], networkLoc['longitude']);
-        final accuracy = NetworkLocationService.getAccuracy(networkLoc);
-        final sourceInfo = NetworkLocationService.getLocationSourceInfo(networkLoc);
-        final sourceAccuracy = NetworkLocationService.getSourceAccuracyDescription(networkLoc);
-        final sourceColor = _getSourceColor(networkLoc);
+        final currentLocation = LatLng(location['latitude'], location['longitude']);
+        final accuracy = NetworkLocationService.getAccuracy(location);
+        final sourceInfo = NetworkLocationService.getLocationSourceInfo(location);
+        final sourceAccuracy = NetworkLocationService.getSourceAccuracyDescription(location);
+        final sourceColor = _getSourceColor(location);
 
         return Column(
           children: [
@@ -291,83 +234,43 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: sourceColor.withOpacity(0.2),
+                                color: _getAccuracyColor(networkController.accuracyLevel).withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                NetworkLocationService.getAccuracyDescription(
-                                    accuracy),
+                                NetworkLocationService.getAccuracyDescription(accuracy),
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
-                                  color: sourceColor,
+                                  color: _getAccuracyColor(networkController.accuracyLevel),
                                 ),
                               ),
                             ),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _buildInfoRow(
-                        cs,
-                        'Latitude:',
-                        networkLoc['latitude'].toStringAsFixed(6),
-                      ),
+                      _buildInfoRow(cs, 'Latitude:', location['latitude'].toStringAsFixed(6)),
                       const SizedBox(height: 8),
-                      _buildInfoRow(
-                        cs,
-                        'Longitude:',
-                        networkLoc['longitude'].toStringAsFixed(6),
-                      ),
+                      _buildInfoRow(cs, 'Longitude:', location['longitude'].toStringAsFixed(6)),
                       const SizedBox(height: 8),
                       _buildInfoRow(
                         cs,
                         'Akurasi:',
-                        accuracy != null
-                            ? '${accuracy.toStringAsFixed(0)} m'
-                            : 'Unknown',
+                        accuracy != null ? '${accuracy.toStringAsFixed(0)} m' : 'Unknown',
                       ),
                       const SizedBox(height: 8),
-                      _buildInfoRow(
-                        cs,
-                        'Tipe Akurasi:',
-                        sourceAccuracy,
-                      ),
+                      _buildInfoRow(cs, 'Tipe Akurasi:', sourceAccuracy),
                       const SizedBox(height: 8),
-                      _buildInfoRow(
-                        cs,
-                        'Kota:',
-                        networkLoc['city'] ?? 'Unknown',
-                      ),
+                      _buildInfoRow(cs, 'Kota:', location['city'] ?? 'Unknown'),
                       const SizedBox(height: 8),
-                      _buildInfoRow(
-                        cs,
-                        'Region:',
-                        networkLoc['region'] ?? 'Unknown',
-                      ),
+                      _buildInfoRow(cs, 'Region:', location['region'] ?? 'Unknown'),
                       const SizedBox(height: 8),
-                      _buildInfoRow(
-                        cs,
-                        'Negara:',
-                        networkLoc['country_name'] ?? networkLoc['country'] ?? 'Unknown',
-                      ),
-                      const SizedBox(height: 8),
-                      _buildInfoRow(
-                        cs,
-                        'ISP/Provider:',
-                        networkLoc['isp'] ?? 'Unknown',
-                      ),
-                      const SizedBox(height: 8),
-                      _buildInfoRow(
-                        cs,
-                        'Sumber:',
-                        networkLoc['source'] ?? 'Unknown',
-                      ),
+                      _buildInfoRow(cs, 'Sumber:', location['source'] ?? 'Unknown'),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed:
-                              _isLoadingLocation ? null : _getNetworkLocation,
+                          onPressed: isLoading ? null : networkController.refreshPosition,
                           icon: const Icon(Icons.refresh),
                           label: const Text('Perbarui Lokasi'),
                         ),
