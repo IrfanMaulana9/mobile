@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import '../controllers/network_location_controller.dart';
 
 /// View untuk Network Provider Location Tracker
-/// Menggunakan network provider saja (tanpa GPS)
+/// Dengan improved loading indicator dan progress
 class NetworkLocationView extends StatelessWidget {
   const NetworkLocationView({super.key});
 
@@ -33,21 +33,70 @@ class NetworkLocationView extends StatelessWidget {
         ],
       ),
       body: Obx(() {
-        // Loading state
+        // Loading state with progress
         if (controller.isLoading) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Mendapatkan lokasi...'),
-              ],
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    controller.loadingMessage,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(
+                    value: controller.loadingProgress / 100,
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '${controller.loadingProgress}%',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Proses ini membutuhkan waktu 10-20 detik',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Pastikan WiFi atau data seluler aktif',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           );
         }
 
-        // Error state
+        // Error state with helpful actions
         if (controller.errorMessage.isNotEmpty) {
           final errorAction = controller.getErrorAction();
           return Center(
@@ -56,18 +105,40 @@ class NetworkLocationView extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                  const SizedBox(height: 16),
+                  const Icon(Icons.error_outline, size: 80, color: Colors.red),
+                  const SizedBox(height: 24),
                   Text(
                     controller.errorMessage,
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 16),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
                   ElevatedButton.icon(
                     onPressed: errorAction['action'] as VoidCallback?,
                     icon: Icon(errorAction['icon'] as IconData),
                     label: Text(errorAction['label'] as String),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Tips:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '• Pastikan WiFi atau mobile data aktif\n'
+                    '• Izinkan akses lokasi untuk aplikasi ini\n'
+                    '• Coba pindah ke area dengan sinyal lebih baik',
+                    style: TextStyle(fontSize: 12),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
@@ -81,7 +152,6 @@ class NetworkLocationView extends StatelessWidget {
             Column(
               children: [
                 _buildCoordinateDisplay(controller),
-                // OpenStreetMap Section
                 Expanded(child: _buildOpenStreetMap(controller)),
               ],
             ),
@@ -145,7 +215,6 @@ class NetworkLocationView extends StatelessWidget {
     );
   }
 
-  /// Build coordinate display widget
   Widget _buildCoordinateDisplay(NetworkLocationController controller) {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -214,7 +283,7 @@ class NetworkLocationView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            if (controller.currentPosition != null) ...[
+            if (controller.currentPosition != null || controller.networkLocation != null) ...[
               _buildCoordinateRow(
                 'Latitude',
                 controller.latitude?.toStringAsFixed(6) ?? 'N/A',
@@ -362,7 +431,7 @@ class NetworkLocationView extends StatelessWidget {
   }
 
   Widget _buildOpenStreetMap(NetworkLocationController controller) {
-    if (controller.currentPosition == null) {
+    if (controller.networkLocation == null && controller.currentPosition == null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -415,7 +484,7 @@ class NetworkLocationView extends StatelessWidget {
               maxZoom: 19,
               retinaMode: MediaQuery.of(Get.context!).devicePixelRatio > 1.0,
             ),
-            if (controller.currentPosition != null)
+            if (controller.latitude != null && controller.longitude != null)
               MarkerLayer(
                 markers: [
                   Marker(

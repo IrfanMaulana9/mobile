@@ -7,7 +7,9 @@ import 'controllers/storage_controller.dart';
 import 'controllers/theme_controller.dart';
 import 'controllers/auth_controller.dart';
 import 'controllers/booking_controller.dart';
-import 'controllers/gps_controller.dart'; // Added GPSController import
+import 'controllers/gps_controller.dart';
+import 'controllers/network_location_controller.dart';
+import 'controllers/experiment_controller.dart';
 import 'pages/splash_screen.dart';
 import 'pages/home_page.dart';
 import 'pages/weather_demo.dart';
@@ -26,6 +28,7 @@ import 'pages/location_tracker_page.dart';
 import 'pages/gps_menu_page.dart';
 import 'pages/gps_location_page.dart';
 import 'pages/network_location_page.dart';
+import 'pages/experiment_management_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,7 +53,12 @@ void main() async {
     
     final gpsController = GPSController();
     Get.put(gpsController);
-    // await gpsController.onInit();
+    
+    final networkLocationController = NetworkLocationController();
+    Get.put(networkLocationController);
+    
+    final experimentController = ExperimentController();
+    Get.put(experimentController);
     
     runApp(CleaningServiceApp());
   } catch (e) {
@@ -237,6 +245,10 @@ class CleaningServiceApp extends StatelessWidget {
         GetPage(
           name: NetworkLocationPage.routeName,
           page: () => const NetworkLocationPage(),
+        ),
+        GetPage(
+          name: ExperimentManagementPage.routeName,
+          page: () => const ExperimentManagementPage(),
         ),
       ],
     ));

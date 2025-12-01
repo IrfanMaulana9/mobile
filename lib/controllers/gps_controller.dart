@@ -30,7 +30,7 @@ class GPSController extends GetxController {
   Future<void> onInit() async {
     super.onInit();
     print('$_logTag Initializing...');
-    print('$_logTag Ready for on-demand location access');
+    print('$_logTag Ready for on-demand GPS access');
   }
 
   /// Initialize GPS and request permissions (called on-demand)
@@ -113,8 +113,16 @@ class GPSController extends GetxController {
     if (isTracking.value) return;
     
     if (!isGPSInitialized.value) {
-      Get.snackbar('Error', 'GPS belum diinisialisasi');
-      return;
+      try {
+        await initializeGPS();
+        if (!isGPSInitialized.value) {
+          Get.snackbar('Error', 'GPS belum diinisialisasi');
+          return;
+        }
+      } catch (e) {
+        Get.snackbar('Error', 'Gagal menginisialisasi GPS: $e');
+        return;
+      }
     }
 
     isTracking.value = true;
@@ -139,7 +147,7 @@ class GPSController extends GetxController {
             ),
           );
           
-          print('$_logTag Position update: ${position.latitude}, ${position.longitude}');
+          print('$_logTag 📍 Live Position: Lat=${position.latitude.toStringAsFixed(4)}, Lng=${position.longitude.toStringAsFixed(4)}, Accuracy=${position.accuracy.toStringAsFixed(1)}m');
         },
         onError: (error) {
           print('$_logTag Stream error: $error');
