@@ -4,7 +4,6 @@ import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 import '../controllers/gps_controller.dart';
 import '../services/network_location_service.dart';
-import '../services/wifi_location_service.dart';
 
 class NetworkLocationPage extends StatefulWidget {
   static const String routeName = '/network-location';
@@ -18,7 +17,6 @@ class NetworkLocationPage extends StatefulWidget {
 class _NetworkLocationPageState extends State<NetworkLocationPage> {
   final controller = Get.put(GPSController());
   final networkService = NetworkLocationService();
-  final wifiService = WiFiLocationService();
   late MapController _mapController;
   bool _isLoadingLocation = false;
 
@@ -51,7 +49,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
               children: const [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('Mengambil data lokasi WiFi...'),
+                Text('Mengambil data lokasi...'),
               ],
             ),
           ),
@@ -78,20 +76,18 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
 
         final sourceInfo = NetworkLocationService.getLocationSourceInfo(location);
         final accuracy = NetworkLocationService.getAccuracy(location);
-        final accuracyText = accuracy != null
-            ? WiFiLocationService.getAccuracyDescription(accuracy)
-            : 'Unknown';
-
+        final sourceAccuracy = NetworkLocationService.getSourceAccuracyDescription(location);
+        
         Get.snackbar(
           'Sukses',
-          'Lokasi diperoleh\nSumber: $sourceInfo\nAkurasi: $accuracyText',
+          'Lokasi diperoleh\nSumber: $sourceInfo\nAkurasi: $sourceAccuracy',
           backgroundColor: Colors.green.shade100,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         );
       } else if (mounted) {
         Get.snackbar(
           'Error',
-          'Gagal mendapatkan lokasi. Pastikan WiFi aktif dan terhubung.',
+          'Gagal mendapatkan lokasi. Pastikan internet aktif (WiFi atau data seluler).',
           backgroundColor: Colors.red.shade100,
         );
       }
@@ -116,6 +112,20 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
         LatLng(networkLoc['latitude'], networkLoc['longitude']),
         17.0,
       );
+    }
+  }
+
+  Color _getSourceColor(Map<String, dynamic>? location) {
+    if (location == null) return Colors.grey;
+    
+    final connectivity = location['connectivity'] as String?;
+    
+    if (connectivity?.contains('WiFi') ?? false) {
+      return Colors.green;
+    } else if (connectivity?.contains('Cellular') ?? false) {
+      return Colors.blue;
+    } else {
+      return Colors.orange;
     }
   }
 
@@ -156,7 +166,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                 const Text('Lokasi tidak tersedia'),
                 const SizedBox(height: 8),
                 const Text(
-                  'Pastikan WiFi aktif dan terhubung',
+                  'Pastikan WiFi atau data seluler aktif',
                   style: TextStyle(fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
@@ -173,14 +183,10 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
 
         final currentLocation =
             LatLng(networkLoc['latitude'], networkLoc['longitude']);
-        
-        final isHighAccuracyWiFi =
-            NetworkLocationService.isHighAccuracyWiFi(networkLoc);
-        final isWiFiBased = NetworkLocationService.isWiFiBasedLocation(networkLoc);
-        final accuracyColor =
-            isHighAccuracyWiFi ? Colors.green : (isWiFiBased ? Colors.blue : Colors.orange);
-        final sourceInfo = NetworkLocationService.getLocationSourceInfo(networkLoc);
         final accuracy = NetworkLocationService.getAccuracy(networkLoc);
+        final sourceInfo = NetworkLocationService.getLocationSourceInfo(networkLoc);
+        final sourceAccuracy = NetworkLocationService.getSourceAccuracyDescription(networkLoc);
+        final sourceColor = _getSourceColor(networkLoc);
 
         return Column(
           children: [
@@ -210,7 +216,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                             height: 48,
                             child: Icon(
                               Icons.location_on,
-                              color: accuracyColor.shade600,
+                              color: sourceColor,
                               size: 48,
                             ),
                           ),
@@ -267,7 +273,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: accuracyColor.shade100,
+                              color: sourceColor.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -275,7 +281,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: accuracyColor.shade700,
+                                color: sourceColor,
                               ),
                             ),
                           ),
@@ -285,16 +291,16 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: accuracyColor.shade100,
+                                color: sourceColor.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                WiFiLocationService.getAccuracyDescription(
+                                NetworkLocationService.getAccuracyDescription(
                                     accuracy),
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
-                                  color: accuracyColor.shade700,
+                                  color: sourceColor,
                                 ),
                               ),
                             ),
@@ -317,8 +323,14 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                         cs,
                         'Akurasi:',
                         accuracy != null
-                            ? '${accuracy.toStringAsFixed(1)} m'
+                            ? '${accuracy.toStringAsFixed(0)} m'
                             : 'Unknown',
+                      ),
+                      const SizedBox(height: 8),
+                      _buildInfoRow(
+                        cs,
+                        'Tipe Akurasi:',
+                        sourceAccuracy,
                       ),
                       const SizedBox(height: 8),
                       _buildInfoRow(
@@ -348,7 +360,7 @@ class _NetworkLocationPageState extends State<NetworkLocationPage> {
                       _buildInfoRow(
                         cs,
                         'Sumber:',
-                        networkLoc['provider'] ?? 'Unknown',
+                        networkLoc['source'] ?? 'Unknown',
                       ),
                       const SizedBox(height: 16),
                       SizedBox(
