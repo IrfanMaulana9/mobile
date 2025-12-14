@@ -5,112 +5,143 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import '../data/services/location_service_v2.dart';
 
-/// Network Location Service - Fixed untuk mendapatkan lokasi REAL dari device
-/// Menggunakan NETWORK PROVIDER ONLY (WiFi/Cellular triangulation)
-/// TIDAK menggunakan IP-based location
+/// Network Location Service - OPTIMIZED VERSION
+/// ✅ Faster timeout (5-8 seconds instead of 15-20)
+/// ✅ Smart fallback to last known position
+/// ✅ Better cache management
+/// ✅ Progressive loading
 class NetworkLocationService {
   static const String _logTag = '[NetworkLocationService]';
   
   final LocationServiceV2 _locationServiceV2 = LocationServiceV2();
 
-  // Cache untuk performa - tapi dengan validasi ketat
+  // Cache dengan TTL lebih pendek untuk data fresh
   Map<String, dynamic>? _cachedLocation;
   DateTime? _cacheTime;
-  static const int cacheMaxAgeSeconds = 20; // Optimized: Reduced from 30 to 20
+  static const int cacheMaxAgeSeconds = 15; // Reduced from 20 to 15
 
-  /// Method utama - HANYA menggunakan Device Network Provider
-  /// Tidak ada IP-based fallback karena itu tidak akurat
+  // Last known position sebagai fallback
+  Position? _lastKnownPosition;
+  DateTime? _lastKnownTime;
+
+  /// MAIN METHOD - OPTIMIZED dengan Smart Fallback
   Future<Map<String, dynamic>?> getLocationFromNetwork({
     bool forceRefresh = false,
   }) async {
     try {
       if (kDebugMode) {
         print('═══════════════════════════════════════════════════════════');
-        print('$_logTag getLocationFromNetwork() called');
+        print('$_logTag 🚀 OPTIMIZED getLocationFromNetwork()');
         print('$_logTag Force Refresh: $forceRefresh');
         print('═══════════════════════════════════════════════════════════');
       }
 
-      // Clear cache if force refresh
-      if (forceRefresh) {
-        clearCache();
-      }
-
-      // Check cache validity
+      // ✅ Step 1: Check valid cache first (fastest)
       if (!forceRefresh && _cachedLocation != null && _cacheTime != null) {
         final age = DateTime.now().difference(_cacheTime!).inSeconds;
         if (age < cacheMaxAgeSeconds) {
           if (kDebugMode) {
-            print('$_logTag ✅ Using cached location (age: ${age}s)');
-            print('$_logTag Cache data: ${_cachedLocation!['city']}, ${_cachedLocation!['region']}');
+            print('$_logTag ⚡ Using CACHE (age: ${age}s) - INSTANT RESPONSE');
           }
           return _cachedLocation;
-        } else {
-          if (kDebugMode) {
-            print('$_logTag ⚠️ Cache expired (age: ${age}s), fetching fresh data');
-          }
-          clearCache();
         }
       }
 
-      // Get REAL device location using network provider
-      if (kDebugMode) {
-        print('$_logTag 📍 Requesting FRESH location from device network provider...');
-      }
-
-      final deviceLocation = await _getDeviceNetworkLocation();
-      
-      if (deviceLocation != null) {
-        // Validate location is reasonable (in Indonesia bounds)
-        if (_isLocationValid(deviceLocation)) {
+      // ✅ Step 2: Try to get fresh location with FAST timeout
+      try {
+        final deviceLocation = await _getDeviceNetworkLocationOptimized();
+        
+        if (deviceLocation != null && _isLocationValid(deviceLocation)) {
           _cachedLocation = deviceLocation;
           _cacheTime = DateTime.now();
           
-          if (kDebugMode) {
-            print('$_logTag ✅ Network provider location obtained and validated');
-            print('$_logTag Location: ${deviceLocation['city']}, ${deviceLocation['region']}');
-            print('$_logTag Coordinates: [${deviceLocation['latitude']}, ${deviceLocation['longitude']}]');
-            print('$_logTag Accuracy: ${deviceLocation['accuracy']}m');
-          }
+          // Store as last known position
+          _lastKnownPosition = Position(
+            latitude: deviceLocation['latitude'],
+            longitude: deviceLocation['longitude'],
+            timestamp: DateTime.now(),
+            accuracy: deviceLocation['accuracy'] ?? 100.0,
+            altitude: deviceLocation['altitude'] ?? 0.0,
+            altitudeAccuracy: 0.0,
+            heading: 0.0,
+            headingAccuracy: 0.0,
+            speed: deviceLocation['speed'] ?? 0.0,
+            speedAccuracy: 0.0,
+          );
+          _lastKnownTime = DateTime.now();
           
-          return deviceLocation;
-        } else {
           if (kDebugMode) {
-            print('$_logTag ❌ Location validation failed - coordinates outside expected range');
+            print('$_logTag ✅ Fresh location obtained successfully');
           }
-          return null;
+          return deviceLocation;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('$_logTag ⚠️ Fresh location failed: $e');
+        }
+      }
+
+      // ✅ Step 3: Fallback to Last Known Position (if available)
+      if (_lastKnownPosition != null && _lastKnownTime != null) {
+        final age = DateTime.now().difference(_lastKnownTime!).inMinutes;
+        if (age < 10) { // Use if less than 10 minutes old
+          if (kDebugMode) {
+            print('$_logTag 🔄 Using LAST KNOWN position (${age}m old)');
+          }
+          return await _processPosition(_lastKnownPosition!, 'Cached', isLastKnown: true);
+        }
+      }
+
+      // ✅ Step 4: Try to get Android/iOS last known position
+      try {
+        final systemLastKnown = await _locationServiceV2.getLastKnownPosition();
+        if (systemLastKnown != null) {
+          if (kDebugMode) {
+            print('$_logTag 📍 Using SYSTEM last known position');
+          }
+          return await _processPosition(systemLastKnown, 'System Cache', isLastKnown: true);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('$_logTag ⚠️ System last known failed: $e');
         }
       }
 
       if (kDebugMode) {
-        print('$_logTag ❌ Failed to get device network location');
+        print('$_logTag ❌ All methods failed to get location');
       }
       return null;
 
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('$_logTag ❌ Error getting network location: $e');
-        print('$_logTag Stack trace: $stackTrace');
+        print('$_logTag ❌ Critical error: $e');
+        print('$_logTag Stack: $stackTrace');
       }
+      
+      // Last resort: return last known if available
+      if (_lastKnownPosition != null) {
+        if (kDebugMode) {
+          print('$_logTag 🆘 Emergency fallback to last known position');
+        }
+        return await _processPosition(_lastKnownPosition!, 'Emergency Cache', isLastKnown: true);
+      }
+      
       return null;
     }
   }
 
-  /// Get ACTUAL device location using Network Provider (WiFi/Cellular)
-  /// This is REAL device triangulation, NOT IP-based
-  /// OPTIMIZED: Faster timeout with smart retry
-  Future<Map<String, dynamic>?> _getDeviceNetworkLocation() async {
-    const maxRetries = 2; // Reduced from 3 to 2
-    const retryDelay = Duration(seconds: 1); // Reduced from 2 to 1
+  /// OPTIMIZED: Faster device network location with smart retry
+  Future<Map<String, dynamic>?> _getDeviceNetworkLocationOptimized() async {
+    // ✅ OPTIMIZED: Only 1 retry with faster timeout
+    const maxRetries = 1; // Reduced from 2
+    const retryDelay = Duration(milliseconds: 500); // Reduced from 1 second
     
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         if (kDebugMode) {
-          print('───────────────────────────────────────────────────────────');
-          print('$_logTag 📡 Fetching location from DEVICE NETWORK PROVIDER');
-          print('$_logTag Attempt: $attempt/$maxRetries');
-          print('$_logTag Using: WiFi/Cellular triangulation (NOT GPS, NOT IP)');
-          print('───────────────────────────────────────────────────────────');
+          print('─────────────────────────────────────────────────────────');
+          print('$_logTag 🔍 Attempt $attempt/$maxRetries (OPTIMIZED)');
+          print('─────────────────────────────────────────────────────────');
         }
 
         // Check connectivity
@@ -119,61 +150,56 @@ class NetworkLocationService {
         
         if (connectivityResult.contains(ConnectivityResult.wifi)) {
           connectivityType = 'WiFi';
-          if (kDebugMode) {
-            print('$_logTag 📶 Connected via WiFi - Good for network location');
-          }
         } else if (connectivityResult.contains(ConnectivityResult.mobile)) {
           connectivityType = 'Cellular';
-          if (kDebugMode) {
-            print('$_logTag 📱 Connected via Cellular - Will use cell towers');
-          }
         } else {
           if (kDebugMode) {
-            print('$_logTag ⚠️ No network connectivity detected');
+            print('$_logTag ⚠️ No network connectivity');
           }
           throw Exception('No network connectivity available');
         }
 
-        // CRITICAL: Use LocationServiceV2 with useGps: FALSE
-        // Smart timeout: WiFi = faster, Cellular = slower
+        // ✅ OPTIMIZED: Much faster timeout
+        // WiFi: 5 seconds (reduced from 15)
+        // Cellular: 8 seconds (reduced from 20)
         final timeout = connectivityType == 'WiFi' 
-            ? const Duration(seconds: 15)  // WiFi is faster
-            : const Duration(seconds: 20); // Cellular needs more time
+            ? const Duration(seconds: 5)  // WiFi is fast
+            : const Duration(seconds: 8); // Cellular needs more time
         
         if (kDebugMode) {
-          print('$_logTag 🔄 Calling LocationServiceV2.getCurrentPosition(useGps: false)');
-          print('$_logTag ⏱️ Timeout set to ${timeout.inSeconds}s for $connectivityType');
+          print('$_logTag ⏱️ Timeout: ${timeout.inSeconds}s for $connectivityType');
+          print('$_logTag 🔄 Fetching location...');
         }
 
         final Position? position = await _locationServiceV2.getCurrentPosition(
-          useGps: false, // CRITICAL: This uses LocationAccuracy.low = Network Provider
+          useGps: false, // Network provider only
         ).timeout(
           timeout,
           onTimeout: () {
             if (kDebugMode) {
-              print('$_logTag ⏱️ Timeout after ${timeout.inSeconds}s on attempt $attempt');
+              print('$_logTag ⏱️ Timeout after ${timeout.inSeconds}s');
             }
-            throw TimeoutException('Location request timed out after ${timeout.inSeconds} seconds');
+            throw TimeoutException('Location timeout after ${timeout.inSeconds}s');
           },
         );
 
         if (position == null) {
           if (kDebugMode) {
-            print('$_logTag ❌ Device returned null position on attempt $attempt');
+            print('$_logTag ❌ Position is null');
           }
           
           if (attempt < maxRetries) {
             if (kDebugMode) {
-              print('$_logTag 🔄 Retrying in ${retryDelay.inSeconds} second(s)...');
+              print('$_logTag 🔄 Retrying in ${retryDelay.inMilliseconds}ms...');
             }
             await Future.delayed(retryDelay);
-            continue; // Retry
+            continue;
           }
           
-          throw Exception('Device network provider returned null position after $maxRetries attempts');
+          throw Exception('Position is null after $maxRetries attempts');
         }
         
-        // Success - return the position processing
+        // Success - process and return
         return await _processPosition(position, connectivityType);
         
       } catch (e) {
@@ -181,67 +207,56 @@ class NetworkLocationService {
           print('$_logTag ❌ Attempt $attempt failed: $e');
         }
         
-        // If this is the last attempt, rethrow the error
         if (attempt >= maxRetries) {
           rethrow;
         }
         
-        // Otherwise, wait and retry
         if (kDebugMode) {
-          print('$_logTag 🔄 Retrying in ${retryDelay.inSeconds} second(s)...');
+          print('$_logTag 🔄 Retrying...');
         }
         await Future.delayed(retryDelay);
       }
     }
     
-    // Should never reach here due to rethrow, but just in case
-    throw Exception('Failed to get location after $maxRetries attempts');
+    throw Exception('Failed after $maxRetries attempts');
   }
   
-  /// Process position data and build result
-  Future<Map<String, dynamic>> _processPosition(Position position, String connectivityType) async {
-    if (position == null) {
-      throw Exception('Position is null');
-    }
-
+  /// Process position with OPTIMIZED geocoding
+  Future<Map<String, dynamic>> _processPosition(
+    Position position, 
+    String connectivityType,
+    {bool isLastKnown = false}
+  ) async {
     if (kDebugMode) {
-      print('───────────────────────────────────────────────────────────');
-      print('$_logTag ✅ Position received from device!');
-      print('$_logTag Latitude: ${position.latitude}');
-      print('$_logTag Longitude: ${position.longitude}');
+      print('─────────────────────────────────────────────────────────');
+      print('$_logTag ✅ Position received!');
+      print('$_logTag Lat: ${position.latitude}');
+      print('$_logTag Lng: ${position.longitude}');
       print('$_logTag Accuracy: ${position.accuracy}m');
-      print('$_logTag Timestamp: ${position.timestamp}');
-      print('───────────────────────────────────────────────────────────');
+      print('$_logTag Source: ${isLastKnown ? 'CACHED' : 'FRESH'}');
+      print('─────────────────────────────────────────────────────────');
     }
 
-    // Validate accuracy - Network provider should give 50-500m accuracy
-    if (position.accuracy < 10) {
-      if (kDebugMode) {
-        print('$_logTag ⚠️ WARNING: Accuracy too good (${position.accuracy}m)');
-        print('$_logTag This might be GPS instead of network provider!');
-      }
-    }
-
-    // Reverse geocode to get address details
-    // OPTIMIZED: Reduced timeout for faster response
+    // Reverse geocode with FAST timeout
     String address = 'Unknown Address';
     String city = 'Unknown';
     String region = 'Unknown';
-    String country = 'Unknown';
+    String country = 'Indonesia';
     
     try {
       if (kDebugMode) {
-        print('$_logTag 🔍 Reverse geocoding coordinates...');
+        print('$_logTag 🔍 Geocoding...');
       }
 
+      // ✅ OPTIMIZED: Faster geocoding timeout (3s instead of 5s)
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       ).timeout(
-        const Duration(seconds: 5), // Reduced from 10 to 5 seconds
+        const Duration(seconds: 3), // Reduced from 5 to 3
         onTimeout: () {
           if (kDebugMode) {
-            print('$_logTag ⏱️ Geocoding timeout, using coordinates as address');
+            print('$_logTag ⏱️ Geocoding timeout - using coordinates');
           }
           return <Placemark>[];
         },
@@ -250,7 +265,6 @@ class NetworkLocationService {
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
         
-        // Build address components
         final street = place.street ?? '';
         final locality = place.locality ?? place.subAdministrativeArea ?? '';
         final administrative = place.administrativeArea ?? '';
@@ -259,7 +273,6 @@ class NetworkLocationService {
         region = administrative.isNotEmpty ? administrative : 'Unknown';
         country = place.country ?? 'Indonesia';
         
-        // Construct full address
         if (street.isNotEmpty && locality.isNotEmpty) {
           address = '$street, $locality';
         } else if (locality.isNotEmpty) {
@@ -269,27 +282,19 @@ class NetworkLocationService {
         }
 
         if (kDebugMode) {
-          print('$_logTag ✅ Geocoding successful:');
-          print('$_logTag    City: $city');
-          print('$_logTag    Region: $region');
-          print('$_logTag    Address: $address');
+          print('$_logTag ✅ Geocoded: $city, $region');
         }
       } else {
-        // Use coordinates as fallback
         address = '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
-        if (kDebugMode) {
-          print('$_logTag ℹ️ No geocoding data, using coordinates');
-        }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('$_logTag ⚠️ Reverse geocoding failed: $e');
-        print('$_logTag Using coordinates as address fallback');
+        print('$_logTag ⚠️ Geocoding failed: $e');
       }
       address = '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
     }
 
-    // Build result with complete metadata
+    // Build result
     final result = {
       'latitude': position.latitude,
       'longitude': position.longitude,
@@ -300,7 +305,7 @@ class NetworkLocationService {
       'country_name': country,
       'address': address,
       'connectivity': connectivityType,
-      'source': 'Device Network Provider',
+      'source': isLastKnown ? 'Cached Location' : 'Device Network Provider',
       'source_accuracy': _getSourceAccuracyDescription(position.accuracy),
       'provider': connectivityType,
       'type': 'network',
@@ -308,61 +313,45 @@ class NetworkLocationService {
       'altitude': position.altitude,
       'speed': position.speed,
       'device_timestamp': position.timestamp?.toIso8601String(),
+      'is_cached': isLastKnown,
     };
 
     if (kDebugMode) {
       print('═══════════════════════════════════════════════════════════');
-      print('$_logTag ✅ SUCCESSFULLY OBTAINED NETWORK LOCATION');
-      print('$_logTag Final Result: $city, $region');
+      print('$_logTag ✅ SUCCESS: $city, $region');
       print('$_logTag Accuracy: ${position.accuracy.toStringAsFixed(1)}m');
-      print('$_logTag Source: Device $connectivityType Network Provider');
+      print('$_logTag Source: ${result['source']}');
       print('═══════════════════════════════════════════════════════════');
     }
 
     return result;
   }
 
-  /// Validate if location coordinates are reasonable
-  /// Check if location is within Indonesia bounds
+  /// Validate location
   bool _isLocationValid(Map<String, dynamic> location) {
     try {
       final lat = location['latitude'] as double?;
       final lng = location['longitude'] as double?;
       
-      if (lat == null || lng == null) {
-        if (kDebugMode) {
-          print('$_logTag Validation failed: null coordinates');
-        }
-        return false;
-      }
+      if (lat == null || lng == null) return false;
 
-      // Indonesia bounds (approximate)
-      const double indonesiaMinLat = -11.0;  // South
-      const double indonesiaMaxLat = 6.0;    // North
-      const double indonesiaMinLng = 95.0;   // West
-      const double indonesiaMaxLng = 141.0;  // East
+      // Indonesia bounds
+      const double indonesiaMinLat = -11.0;
+      const double indonesiaMaxLat = 6.0;
+      const double indonesiaMinLng = 95.0;
+      const double indonesiaMaxLng = 141.0;
 
-      final isValid = lat >= indonesiaMinLat && 
-                      lat <= indonesiaMaxLat && 
-                      lng >= indonesiaMinLng && 
-                      lng <= indonesiaMaxLng;
-
-      if (kDebugMode) {
-        print('$_logTag Location validation: [$lat, $lng]');
-        print('$_logTag Is in Indonesia bounds: $isValid');
-      }
-
-      return isValid;
+      return lat >= indonesiaMinLat && 
+             lat <= indonesiaMaxLat && 
+             lng >= indonesiaMinLng && 
+             lng <= indonesiaMaxLng;
 
     } catch (e) {
-      if (kDebugMode) {
-        print('$_logTag Error validating location: $e');
-      }
       return false;
     }
   }
 
-  /// Get source accuracy description based on accuracy value
+  /// Get source accuracy description
   String _getSourceAccuracyDescription(double accuracy) {
     if (accuracy < 50) {
       return 'Excellent (±${accuracy.toStringAsFixed(0)}m)';
@@ -377,59 +366,50 @@ class NetworkLocationService {
     }
   }
 
-  /// Clear cached location (for manual refresh)
+  /// Clear cache
   void clearCache() {
     _cachedLocation = null;
     _cacheTime = null;
+    // Don't clear last known position - keep as emergency fallback
     if (kDebugMode) {
-      print('$_logTag 🗑️ Location cache cleared');
+      print('$_logTag 🗑️ Cache cleared (last known position preserved)');
     }
   }
 
   // ============================================================================
-  // STATIC HELPER METHODS
+  // STATIC HELPER METHODS (unchanged)
   // ============================================================================
 
-  /// Get quality description based on location source
   static String getQualityDescription(String locationType, {String? source}) {
     if (locationType == 'gps') {
       return 'GPS (Very Accurate ±5-10m)';
     }
-
     if (source?.contains('Device') ?? false) {
       return 'Network Provider (Accurate ±50-500m)';
     }
-    
     return 'Network (Accuracy Unknown)';
   }
 
-  /// Get location source info for display
   static String getLocationSourceInfo(Map<String, dynamic>? location) {
     if (location == null) return 'N/A';
-
     final source = location['source'] as String? ?? 'Unknown';
     final connectivity = location['connectivity'] as String? ?? '';
-
     return '$connectivity Network Provider\n$source';
   }
 
-  /// Check if location is from device network provider
   static bool isDeviceNetworkLocation(Map<String, dynamic>? location) {
     final source = location?['source'] as String?;
     return source?.contains('Device') ?? false;
   }
 
-  /// Get accuracy in meters
   static double? getAccuracy(Map<String, dynamic>? location) {
     return location?['accuracy'] as double?;
   }
 
-  /// Get source accuracy description
   static String getSourceAccuracyDescription(Map<String, dynamic>? location) {
     return location?['source_accuracy'] as String? ?? 'Unknown';
   }
 
-  /// Format accuracy description for UI
   static String getAccuracyDescription(double accuracy) {
     if (accuracy < 50) {
       return 'Sangat Akurat (±${accuracy.toStringAsFixed(0)}m)';
@@ -444,7 +424,6 @@ class NetworkLocationService {
     }
   }
 
-  /// Get accuracy level for UI color coding
   static String getAccuracyLevel(double accuracy) {
     if (accuracy < 50) return 'excellent';
     if (accuracy < 150) return 'good';

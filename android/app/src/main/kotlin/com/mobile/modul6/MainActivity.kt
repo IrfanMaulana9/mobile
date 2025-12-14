@@ -1,4 +1,4 @@
-package com.example.modul2cs
+package com.mobile.modul6
 
 import io.flutter.embedding.android.FlutterActivity
 

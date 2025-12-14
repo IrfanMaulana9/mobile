@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- New file for Android notification channel resources -->
+<resources>
+    <string name="high_importance_channel_id">high_importance_channel</string>
+    <string name="high_importance_channel_name">High Importance Notifications</string>
+    <string name="high_importance_channel_description">This channel is used for important notifications.</string>
+    
+    <string name="custom_sound_channel_id">custom_sound_channel</string>
+    <string name="custom_sound_channel_name">Custom Sound Notifications</string>
+    <string name="custom_sound_channel_description">Notifications with custom sound.</string>
+    
+    <string name="progress_channel_id">progress_channel</string>
+    <string name="progress_channel_name">Progress Notifications</string>
+    <string name="progress_channel_description">This channel is used for progress notifications.</string>
+</resources>

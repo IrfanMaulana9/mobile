@@ -3,6 +3,9 @@ import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'services/notification_service.dart';
 import 'controllers/storage_controller.dart';
 import 'controllers/theme_controller.dart';
 import 'controllers/auth_controller.dart';
@@ -10,6 +13,7 @@ import 'controllers/booking_controller.dart';
 import 'controllers/gps_controller.dart';
 import 'controllers/network_location_controller.dart';
 import 'controllers/experiment_controller.dart';
+import 'controllers/notification_controller.dart';
 import 'pages/splash_screen.dart';
 import 'pages/home_page.dart';
 import 'pages/weather_demo.dart';
@@ -29,11 +33,28 @@ import 'pages/gps_menu_page.dart';
 import 'pages/gps_location_page.dart';
 import 'pages/network_location_page.dart';
 import 'pages/experiment_management_page.dart';
+import 'pages/notifications_page.dart';
+import 'pages/test_notifications_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
+    print('[v0] Initializing Firebase...');
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('[v0] Firebase initialized successfully');
+    
+    print('[v0] Initializing Notification Service...');
+    try {
+      await NotificationService().initialize();
+      print('[v0] Notification Service initialized');
+    } catch (e) {
+      print('[v0] Notification Service initialization failed: $e');
+      print('[v0] Continuing without push notifications...');
+    }
+    
     await Hive.initFlutter();
     
     final storageController = StorageController();
@@ -60,24 +81,45 @@ void main() async {
     final experimentController = ExperimentController();
     Get.put(experimentController);
     
+    final notificationController = NotificationController();
+    Get.put(notificationController);
+    
     runApp(CleaningServiceApp());
-  } catch (e) {
+  } catch (e, stackTrace) {
+    print('[v0] Fatal error during initialization: $e');
+    print('[v0] Stack trace: $stackTrace');
+    
     runApp(MaterialApp(
       home: Scaffold(
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              const SizedBox(height: 16),
-              const Text('Failed to initialize app'),
-              const SizedBox(height: 8),
-              Text(
-                e.toString(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                const Text(
+                  'Failed to initialize app',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  e.toString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Please check:\n1. Internet connection\n2. Firebase Console setup\n3. google-services.json file',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -249,6 +291,14 @@ class CleaningServiceApp extends StatelessWidget {
         GetPage(
           name: ExperimentManagementPage.routeName,
           page: () => const ExperimentManagementPage(),
+        ),
+        GetPage(
+          name: NotificationsPage.routeName,
+          page: () => const NotificationsPage(),
+        ),
+        GetPage(
+          name: TestNotificationsPage.routeName,
+          page: () => const TestNotificationsPage(),
         ),
       ],
     ));

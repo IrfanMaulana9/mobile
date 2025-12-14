@@ -5,26 +5,29 @@ import 'package:permission_handler/permission_handler.dart'
     as permission_handler;
 
 /// Service untuk mengelola lokasi (GPS dan Network Provider)
-/// OPTIMIZED VERSION - Faster network location fetch
-/// Default: 8-12 detik (turun dari 20-30 detik)
+/// Menggunakan Geolocator dengan best practices
+/// Default menggunakan Network Provider saja (tanpa GPS)
+/// Fixed: Extended timeout untuk network provider yang lebih lambat
 class LocationServiceV2 {
   static final LocationServiceV2 _instance = LocationServiceV2._internal();
   factory LocationServiceV2() => _instance;
   LocationServiceV2._internal();
 
+  /// Stream untuk mendapatkan posisi real-time
   Stream<Position>? _positionStream;
+
+  /// Status permission saat ini
   LocationPermission? _permissionStatus;
+
+  /// Permission status dari permission_handler
   permission_handler.PermissionStatus? _permissionHandlerStatus;
 
-  // Cache untuk mempercepat request berulang
-  Position? _lastPosition;
-  DateTime? _lastPositionTime;
-  static const _cacheValiditySeconds = 10; // Cache 10 detik
-
+  /// Cek apakah GPS service enabled
   Future<bool> isLocationServiceEnabled() async {
     return await Geolocator.isLocationServiceEnabled();
   }
 
+  /// Cek status network connection
   Future<bool> isNetworkAvailable() async {
     try {
       return true;
@@ -36,6 +39,8 @@ class LocationServiceV2 {
     }
   }
 
+  /// Request permission untuk akses lokasi
+  /// [requireGps]: true jika memerlukan GPS aktif, false untuk network provider saja
   Future<bool> requestPermission({bool requireGps = false}) async {
     final locationSource = requireGps ? 'GPS' : 'NETWORK';
     if (kDebugMode) {
@@ -44,6 +49,7 @@ class LocationServiceV2 {
     }
 
     try {
+      // Jika memerlukan GPS, cek apakah service enabled
       if (requireGps) {
         if (kDebugMode) {
           print('📍 [LOCATION SERVICE V2] Checking GPS service status...');
@@ -64,6 +70,7 @@ class LocationServiceV2 {
         }
       }
 
+      // Untuk network provider, cek network availability
       if (!requireGps) {
         bool networkAvailable = await isNetworkAvailable();
         if (!networkAvailable) {
@@ -73,6 +80,7 @@ class LocationServiceV2 {
         }
       }
 
+      // Cek permission menggunakan permission_handler
       permission_handler.Permission locationPermission =
           permission_handler.Permission.locationWhenInUse;
 
@@ -81,6 +89,7 @@ class LocationServiceV2 {
       }
       _permissionHandlerStatus = await locationPermission.status;
 
+      // Jika permission sudah granted
       if (_permissionHandlerStatus ==
               permission_handler.PermissionStatus.granted ||
           _permissionHandlerStatus ==
@@ -92,6 +101,7 @@ class LocationServiceV2 {
         return true;
       }
 
+      // Jika permission permanently denied
       if (_permissionHandlerStatus ==
           permission_handler.PermissionStatus.permanentlyDenied) {
         if (kDebugMode) {
@@ -101,6 +111,7 @@ class LocationServiceV2 {
         return false;
       }
 
+      // Request permission jika belum granted
       if (_permissionHandlerStatus ==
           permission_handler.PermissionStatus.denied) {
         if (kDebugMode) {
@@ -148,6 +159,7 @@ class LocationServiceV2 {
     }
   }
 
+  /// Cek permission status
   Future<LocationPermission> checkPermission() async {
     try {
       final status =
@@ -182,61 +194,48 @@ class LocationServiceV2 {
     }
   }
 
+  /// Cek apakah permission sudah granted
   Future<bool> isPermissionGranted() async {
     final status = await checkPermission();
     return status == LocationPermission.whileInUse ||
         status == LocationPermission.always;
   }
 
+  /// Cek apakah permission permanently denied
   Future<bool> isPermissionPermanentlyDenied() async {
     final status = await checkPermission();
     return status == LocationPermission.deniedForever;
   }
 
+  /// Buka settings untuk enable permission
   Future<void> openLocationSettings() async {
     await Geolocator.openLocationSettings();
   }
 
+  /// Buka app settings
   Future<void> openAppSettings() async {
     await permission_handler.openAppSettings();
   }
 
-  /// ⚡ OPTIMIZED: Dapatkan posisi dengan caching dan timeout cerdas
-  /// Network Provider: 8-12 detik (turun dari 20 detik)
-  /// GPS: 5-8 detik
+  /// Dapatkan posisi saat ini (one-time) - FRESH DATA, NO CACHE
+  /// [useGps]: true untuk GPS (high accuracy), false untuk network provider saja
+  /// Default: false (network provider saja)
+  /// FIXED: Extended timeout untuk network provider yang lebih lambat
   Future<Position?> getCurrentPosition({bool useGps = false}) async {
     final locationSource = useGps ? 'GPS' : 'NETWORK';
-    
     if (kDebugMode) {
       print('═══════════════════════════════════════════════════════════');
       print('📍 [LOCATION SERVICE V2] getCurrentPosition() called');
       print('📍 [LOCATION SERVICE V2] useGps parameter: $useGps');
       print('📍 [LOCATION SERVICE V2] Location Source: $locationSource');
-      print('✅ [LOCATION SERVICE V2] OPTIMIZED - FASTER FETCH');
+      print('✅ [LOCATION SERVICE V2] FRESH FETCH - NO CACHE will be used');
       print('═══════════════════════════════════════════════════════════');
     }
 
     try {
-      // ⚡ OPTIMIZATION 1: Check cache first (untuk network provider)
-      if (!useGps && _lastPosition != null && _lastPositionTime != null) {
-        final age = DateTime.now().difference(_lastPositionTime!).inSeconds;
-        if (age < _cacheValiditySeconds) {
-          if (kDebugMode) {
-            print('⚡ [LOCATION SERVICE V2] Using cached position (age: ${age}s)');
-            print('✅ [LOCATION SERVICE V2] INSTANT RESPONSE from cache');
-          }
-          return _lastPosition;
-        } else {
-          if (kDebugMode) {
-            print('⏰ [LOCATION SERVICE V2] Cache expired (age: ${age}s)');
-          }
-        }
-      }
-
       if (kDebugMode) {
         print('📍 [LOCATION SERVICE V2] Checking permission (requireGps: $useGps)...');
       }
-      
       bool hasPermission = await requestPermission(requireGps: useGps);
       if (!hasPermission) {
         if (kDebugMode) {
@@ -251,11 +250,11 @@ class LocationServiceV2 {
           throw PermissionDeniedException('Location permission denied');
         }
       }
-      
       if (kDebugMode) {
         print('✅ [LOCATION SERVICE V2] Permission granted');
       }
 
+      // Untuk network provider, cek network availability
       if (!useGps) {
         if (kDebugMode) {
           print('📍 [LOCATION SERVICE V2] Checking network availability for NETWORK provider...');
@@ -272,36 +271,29 @@ class LocationServiceV2 {
         }
       }
 
-      // ⚡ OPTIMIZATION 2: Shorter, smarter timeout
+      // Pilih akurasi berdasarkan GPS toggle
+      // LocationAccuracy.low = network provider saja (tanpa GPS)
+      // LocationAccuracy.high = GPS dengan akurasi tinggi
       final accuracy = useGps ? LocationAccuracy.high : LocationAccuracy.low;
-      
-      // Network: 10s (turun dari 20s)
-      // GPS: 6s (turun dari 10s)
+
+      // OPTIMIZED: Smart timeout based on source
+      // Network provider: 15-20 seconds (reduced from 30)
+      // GPS: 10 seconds
       final timeout = useGps 
-          ? const Duration(seconds: 6)  // GPS lebih cepat
-          : const Duration(seconds: 10); // Network: 10s (50% lebih cepat!)
+          ? const Duration(seconds: 10) 
+          : const Duration(seconds: 20); // Optimized from 30 to 20
 
       if (kDebugMode) {
         print('📍 [LOCATION SERVICE V2] LocationAccuracy: ${accuracy.toString()}');
-        print('⏱️ [LOCATION SERVICE V2] Timeout: ${timeout.inSeconds}s (OPTIMIZED)');
+        print('📍 [LOCATION SERVICE V2] Timeout: ${timeout.inSeconds} seconds');
         print('📍 [LOCATION SERVICE V2] Requesting position with $locationSource source...');
       }
 
-      // ⚡ OPTIMIZATION 3: Use forceAndroidLocationManager untuk network
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: accuracy,
-        forceAndroidLocationManager: !useGps, // Force network provider
-        timeLimit: timeout,
+        forceAndroidLocationManager: !useGps, // Force network provider jika useGps = false
+        timeLimit: timeout, // Optimized timeout
       );
-
-      // ⚡ OPTIMIZATION 4: Cache untuk network location
-      if (!useGps) {
-        _lastPosition = position;
-        _lastPositionTime = DateTime.now();
-        if (kDebugMode) {
-          print('💾 [LOCATION SERVICE V2] Position cached for future requests');
-        }
-      }
 
       if (kDebugMode) {
         print('═══════════════════════════════════════════════════════════');
@@ -343,11 +335,11 @@ class LocationServiceV2 {
     } on TimeoutException catch (e) {
       if (kDebugMode) {
         print('❌ [LOCATION SERVICE V2] TimeoutException: ${e.toString()}');
-        print('⚠️ [LOCATION SERVICE V2] Network provider timeout after ${useGps ? 6 : 10}s');
+        print('⚠️ [LOCATION SERVICE V2] Network provider might be taking longer than expected');
         print('⚠️ [LOCATION SERVICE V2] Suggestions:');
         print('   1. Make sure WiFi or mobile data is enabled');
         print('   2. Try moving to a location with better signal');
-        print('   3. Try again in a moment');
+        print('   3. Wait a moment and try again');
       }
       rethrow;
     } catch (e, stackTrace) {
@@ -359,7 +351,7 @@ class LocationServiceV2 {
     }
   }
 
-  /// Get last known position (CACHED)
+  /// Dapatkan posisi terakhir yang diketahui (CACHED)
   Future<Position?> getLastKnownPosition() async {
     if (kDebugMode) {
       print('⚠️⚠️⚠️ [LOCATION SERVICE V2] getLastKnownPosition() called - USING CACHE!');
@@ -394,15 +386,9 @@ class LocationServiceV2 {
     }
   }
 
-  /// Clear cache (untuk force refresh)
-  void clearCache() {
-    _lastPosition = null;
-    _lastPositionTime = null;
-    if (kDebugMode) {
-      print('🗑️ [LOCATION SERVICE V2] Location cache cleared');
-    }
-  }
-
+  /// Mulai listening posisi real-time
+  /// [useGps]: true untuk GPS (high accuracy), false untuk network provider saja
+  /// Default: false (network provider saja)
   Stream<Position>? getPositionStream({
     bool useGps = false,
     int distanceFilter = 10,
@@ -419,6 +405,7 @@ class LocationServiceV2 {
     }
 
     try {
+      // LocationSettings constructor accepts: accuracy, distanceFilter, timeLimit
       final locationSettings = LocationSettings(
         accuracy: useGps ? LocationAccuracy.high : LocationAccuracy.low,
         distanceFilter: distanceFilter,
@@ -443,6 +430,7 @@ class LocationServiceV2 {
     }
   }
 
+  /// Stop position stream
   void stopPositionStream() {
     _positionStream = null;
   }

@@ -4,6 +4,7 @@ import '../controllers/storage_controller.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../controllers/weather_controller.dart';
+import '../controllers/notification_controller.dart'; // Added notification controller import
 import '../data/services.dart';
 import 'booking_page.dart';
 import 'booking_history_page.dart'; // Added import for BookingHistoryPage
@@ -14,6 +15,7 @@ import 'notes_page.dart';
 import 'account_page.dart'; // Added import for AccountPage
 import 'promo_page.dart'; // Added import for PromoPage
 import 'gps_menu_page.dart'; // Added GPS menu page import
+import 'test_notifications_page.dart'; // Added import for test notifications page
 
 class HomePage extends StatefulWidget {
   final bool isDark;
@@ -32,6 +34,7 @@ class _HomePageState extends State<HomePage> {
   final authController = Get.find<AuthController>();
   final themeController = Get.find<ThemeController>();
   late final WeatherController weatherController;
+  late final NotificationController notificationController; // Added notification controller
 
   @override
   void initState() {
@@ -39,6 +42,7 @@ class _HomePageState extends State<HomePage> {
     _isDark = widget.isDark;
     weatherController = Get.put(WeatherController());
     weatherController.fetchWeather('Malang');
+    notificationController = Get.put(NotificationController()); // Initialize notification controller
   }
 
   @override
@@ -53,7 +57,8 @@ class _HomePageState extends State<HomePage> {
           const BookingHistoryPage(),
           const PromoPage(),
           const NotesPage(),
-          const GPSMenuPage(), // Updated to use GPS menu page instead of direct location tracker
+          const GPSMenuPage(),
+          const TestNotificationsPage(), // Added test notifications page to navigation
           const AccountPage(),
         ],
       ),
@@ -84,6 +89,10 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.location_on),
             label: 'GPS',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.science),
+            label: 'Test',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
@@ -148,17 +157,67 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ],
                         ),
-                        // Theme toggle
-                        IconButton(
-                          tooltip: _isDark ? 'Mode Terang' : 'Mode Gelap',
-                          icon: Icon(
-                            _isDark ? Icons.light_mode : Icons.dark_mode,
-                            color: Colors.white,
-                          ),
-                          onPressed: () {
-                            setState(() => _isDark = !_isDark);
-                            widget.onChangeTheme?.call(_isDark);
-                          },
+                        // Notification bell with badge and theme toggle
+                        Row(
+                          children: [
+                            // Notification bell with badge
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Notifikasi',
+                                  icon: const Icon(
+                                    Icons.notifications_outlined,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: () {
+                                    Get.toNamed('/notifications');
+                                  },
+                                ),
+                                Obx(() {
+                                  final unreadCount = notificationController.unreadCount;
+                                  if (unreadCount == 0) return const SizedBox.shrink();
+                                  
+                                  return Positioned(
+                                    right: 8,
+                                    top: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 16,
+                                        minHeight: 16,
+                                      ),
+                                      child: Text(
+                                        unreadCount > 9 ? '9+' : unreadCount.toString(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                            // Theme toggle
+                            IconButton(
+                              tooltip: _isDark ? 'Mode Terang' : 'Mode Gelap',
+                              icon: Icon(
+                                _isDark ? Icons.light_mode : Icons.dark_mode,
+                                color: Colors.white,
+                              ),
+                              onPressed: () {
+                                setState(() => _isDark = !_isDark);
+                                widget.onChangeTheme?.call(_isDark);
+                              },
+                            ),
+                          ],
                         ),
                       ],
                     ),
