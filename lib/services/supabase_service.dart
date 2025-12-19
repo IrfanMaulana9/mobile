@@ -1529,8 +1529,25 @@ class SupabaseService {
         print('[SupabaseService] ✅ Rating review inserted: $ratingId');
         return ratingId;
       } else {
+        final responseBody = response.body;
         print('[SupabaseService] ❌ Insert failed: ${response.statusCode}');
-        print('[SupabaseService] Response: ${response.body}');
+        print('[SupabaseService] Response: $responseBody');
+
+        // Check if table doesn't exist (404 error)
+        if (response.statusCode == 404) {
+          try {
+            final errorData = jsonDecode(responseBody) as Map<String, dynamic>;
+            final message = errorData['message'] as String? ?? '';
+            if (message.contains('Could not find the table') || 
+                message.contains('rating_reviews')) {
+              print('[SupabaseService] ⚠️ Table "rating_reviews" does not exist in Supabase');
+              print('[SupabaseService] 💡 Please create the table in your Supabase database');
+              print('[SupabaseService] 💡 Rating review will not be saved to cloud');
+            }
+          } catch (e) {
+            // Ignore JSON parse errors
+          }
+        }
 
         _tracker.addLog(StoragePerformanceLog(
           operation: 'write',
@@ -1599,7 +1616,23 @@ class SupabaseService {
         print('[SupabaseService] ✅ Fetched ${ratings.length} rating reviews');
         return ratings;
       } else {
+        final responseBody = response.body;
         print('[SupabaseService] ❌ Fetch failed: ${response.statusCode}');
+        
+        // Check if table doesn't exist (404 error)
+        if (response.statusCode == 404) {
+          try {
+            final errorData = jsonDecode(responseBody) as Map<String, dynamic>;
+            final message = errorData['message'] as String? ?? '';
+            if (message.contains('Could not find the table') || 
+                message.contains('rating_reviews')) {
+              print('[SupabaseService] ⚠️ Table "rating_reviews" does not exist in Supabase');
+              print('[SupabaseService] 💡 Returning empty list');
+            }
+          } catch (e) {
+            // Ignore JSON parse errors
+          }
+        }
 
         _tracker.addLog(StoragePerformanceLog(
           operation: 'read',
@@ -1664,7 +1697,23 @@ class SupabaseService {
         print('[SupabaseService] ✅ Rating review deleted: $ratingId');
         return true;
       } else {
+        final responseBody = response.body;
         print('[SupabaseService] ❌ Delete failed: ${response.statusCode}');
+        
+        // Check if table doesn't exist (404 error)
+        if (response.statusCode == 404) {
+          try {
+            final errorData = jsonDecode(responseBody) as Map<String, dynamic>;
+            final message = errorData['message'] as String? ?? '';
+            if (message.contains('Could not find the table') || 
+                message.contains('rating_reviews')) {
+              print('[SupabaseService] ⚠️ Table "rating_reviews" does not exist in Supabase');
+              print('[SupabaseService] 💡 Delete operation skipped');
+            }
+          } catch (e) {
+            // Ignore JSON parse errors
+          }
+        }
 
         _tracker.addLog(StoragePerformanceLog(
           operation: 'write',
