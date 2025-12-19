@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:io'; // ✅ IMPORT FILE
 import '../controllers/booking_controller.dart';
-import '../controllers/auth_controller.dart';
 import '../models/booking.dart';
 
 class BookingSummaryPage extends StatefulWidget {
@@ -512,8 +511,6 @@ class _BookingSummaryPageState extends State<BookingSummaryPage> {
     if (success) {
       final bookingId = controller.lastSubmittedBookingId.value;
       final customerName = controller.lastSubmittedCustomerName.value;
-      final totalPrice = controller.lastSubmittedTotalPrice.value;
-      final booking = controller.bookingData.value; // Get booking data from controller
       
       // Show success snackbar
       Get.snackbar(
@@ -524,35 +521,15 @@ class _BookingSummaryPageState extends State<BookingSummaryPage> {
         duration: const Duration(seconds: 2),
       );
       
-      // Navigate to payment page after 1 second delay
+      // Navigate to notes page after 1 second delay
       await Future.delayed(const Duration(seconds: 1));
-      
-      // Get user email from auth controller
-      final authController = Get.find<AuthController>();
-      final userEmail = authController.currentUserEmail;
-      
-      // Navigate to payment page
-      final paymentResult = await Get.toNamed(
-        '/payment',
-        arguments: {
+      Get.offAllNamed(
+        '/booking-notes',
+        parameters: {
           'bookingId': bookingId,
-          'amount': totalPrice,
           'customerName': customerName,
-          'customerEmail': userEmail.isNotEmpty ? userEmail : '$customerName@example.com',
-          'customerPhone': booking.phoneNumber,
         },
       );
-      
-      // If payment successful or cancelled, navigate to notes page
-      if (paymentResult == true || paymentResult == null) {
-        Get.offAllNamed(
-          '/booking-notes',
-          parameters: {
-            'bookingId': bookingId,
-            'customerName': customerName,
-          },
-        );
-      }
     }
   }
 

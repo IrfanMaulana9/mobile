@@ -24,10 +24,6 @@ import 'pages/auth_page.dart';
 import 'pages/rating_review_page.dart';
 import 'pages/promo_page.dart';
 import 'pages/notifications_page.dart';
-import 'pages/payment_page.dart';
-import 'pages/payment_history_page.dart';
-import 'pages/invoice_page.dart';
-import 'controllers/payment_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,9 +75,6 @@ void main() async {
     
     final ratingReviewController = RatingReviewController();
     Get.put(ratingReviewController);
-    
-    final paymentController = PaymentController();
-    Get.put(paymentController);
     
     runApp(CleaningServiceApp());
   } catch (e, stackTrace) {
@@ -266,27 +259,6 @@ class CleaningServiceApp extends StatelessWidget {
         GetPage(
           name: NotificationsPage.routeName,
           page: () => const NotificationsPage(),
-        ),
-        GetPage(
-          name: '/payment',
-          page: () {
-            final args = Get.arguments as Map<String, dynamic>?;
-            return PaymentPage(
-              bookingId: args?['bookingId'] ?? '',
-              amount: (args?['amount'] ?? 0.0).toDouble(),
-              customerName: args?['customerName'] ?? '',
-              customerEmail: args?['customerEmail'] ?? '',
-              customerPhone: args?['customerPhone'],
-            );
-          },
-        ),
-        GetPage(
-          name: PaymentHistoryPage.routeName,
-          page: () => const PaymentHistoryPage(),
-        ),
-        GetPage(
-          name: InvoicePage.routeName,
-          page: () => const InvoicePage(),
         ),
       ],
     ));
