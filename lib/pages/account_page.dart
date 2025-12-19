@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/storage_controller.dart';
+import 'payment_history_page.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -102,6 +103,16 @@ class _AccountPageState extends State<AccountPage> {
                   const SizedBox(height: 12),
 
                   // Settings Items
+                  _buildSettingsItem(
+                    context,
+                    cs,
+                    icon: Icons.payment,
+                    title: 'Riwayat Pembayaran',
+                    subtitle: 'Lihat semua transaksi pembayaran',
+                    onTap: () {
+                      Get.toNamed('/payment-history');
+                    },
+                  ),
                   _buildSettingsItem(
                     context,
                     cs,
