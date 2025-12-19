@@ -1,5 +1,7 @@
 /// Payment models untuk Xendit integration
 
+import 'package:flutter/material.dart';
+
 enum PaymentMethod {
   bankTransfer('Bank Transfer', 'BANK_TRANSFER', Icons.account_balance),
   qris('QRIS', 'QRIS', Icons.qr_code),

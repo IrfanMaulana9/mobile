@@ -513,6 +513,7 @@ class _BookingSummaryPageState extends State<BookingSummaryPage> {
       final bookingId = controller.lastSubmittedBookingId.value;
       final customerName = controller.lastSubmittedCustomerName.value;
       final totalPrice = controller.lastSubmittedTotalPrice.value;
+      final booking = controller.bookingData.value; // Get booking data from controller
       
       // Show success snackbar
       Get.snackbar(
