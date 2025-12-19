@@ -35,6 +35,7 @@ class NotesController extends GetxController {
       
       notesSyncManager = NotesSyncManager();
       await notesSyncManager.init();
+      notesSyncManager.setCurrentUserId(authController.currentUserId);
       
       print('[NotesController] ✅ Initialized - Standalone Notes Mode');
       
@@ -57,6 +58,9 @@ class NotesController extends GetxController {
         notes.value = [];
         return;
       }
+
+      // Keep sync manager aligned with the current user
+      notesSyncManager.setCurrentUserId(userId);
       
       final loadedNotes = hiveService.getNotesByUserId(userId);
       notes.value = loadedNotes;
@@ -387,7 +391,89 @@ class NotesController extends GetxController {
 
   /// Refresh notes
   Future<void> refreshNotes() async {
+    final userId = authController.currentUserId;
+    if (userId.isEmpty) {
+      await loadUserNotes();
+      return;
+    }
+
+    // Pull latest from Supabase so multi-device changes appear after refresh
+    if (storageController.isOnline.value && supabaseService.isAuthenticated) {
+      await _syncNotesFromCloud(userId);
+    }
+
     await loadUserNotes();
+  }
+
+  DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    if (v is String) return DateTime.tryParse(v);
+    return null;
+  }
+
+  Future<void> _syncNotesFromCloud(String userId) async {
+    try {
+      print('[NotesController] ☁️ Pulling notes from cloud for user: $userId');
+      final cloudNotes = await supabaseService.getNotesByUserId(userId);
+      final cloudIds = <String>{};
+
+      for (final cn in cloudNotes) {
+        final id = (cn['id'] ?? '').toString();
+        if (id.isEmpty) continue;
+        cloudIds.add(id);
+
+        final cloudUpdated = _parseDate(cn['updated_at']) ?? _parseDate(cn['created_at']) ?? DateTime.now();
+
+        final existing = hiveService.getNote(id);
+        if (existing == null) {
+          final newNote = HiveNote(
+            id: id,
+            userId: (cn['user_id'] ?? userId).toString(),
+            title: (cn['title'] ?? '').toString(),
+            content: (cn['content'] ?? '').toString(),
+            createdAt: _parseDate(cn['created_at']) ?? DateTime.now(),
+            updatedAt: cloudUpdated,
+            synced: true,
+            supabaseId: id,
+            imageUrls: cn['image_urls'] is List ? List<String>.from(cn['image_urls']) : <String>[],
+          );
+          await hiveService.addNote(newNote);
+          continue;
+        }
+
+        // Don't overwrite local unsynced edits
+        if (!existing.synced) continue;
+        if (existing.userId != userId) continue;
+
+        final localUpdated = existing.updatedAt ?? existing.createdAt;
+        if (cloudUpdated.isAfter(localUpdated)) {
+          existing.title = (cn['title'] ?? existing.title).toString();
+          existing.content = (cn['content'] ?? existing.content).toString();
+          existing.updatedAt = cloudUpdated;
+          existing.synced = true;
+          existing.supabaseId = id;
+          if (cn['image_urls'] is List) {
+            existing.imageUrls = List<String>.from(cn['image_urls']);
+          }
+          await hiveService.updateNote(existing);
+        }
+      }
+
+      // Delete propagation: if cloud deleted a note, remove it locally (only for notes already synced)
+      final localNotes = hiveService.getNotesByUserId(userId);
+      for (final ln in localNotes) {
+        if (ln.synced && ln.supabaseId != null && ln.supabaseId!.isNotEmpty) {
+          if (!cloudIds.contains(ln.supabaseId)) {
+            await hiveService.deleteNote(ln.id);
+          }
+        }
+      }
+
+      print('[NotesController] ✅ Cloud notes pull completed: ${cloudNotes.length} notes');
+    } catch (e) {
+      print('[NotesController] ❌ Cloud notes pull error: $e');
+    }
   }
 
   @override

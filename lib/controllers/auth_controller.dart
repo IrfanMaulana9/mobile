@@ -22,11 +22,13 @@ class AuthController extends GetxController {
       // Get storage controller
       storageController = Get.find<StorageController>();
       
-      // Check if already authenticated
+      await supabaseService.init();
+      
       isAuthenticated.value = supabaseService.isAuthenticated;
       if (isAuthenticated.value) {
         userEmail.value = supabaseService.userEmail;
         userId.value = supabaseService.userId;
+        print('[AuthController] ✅ Session restored from storage');
       }
       
       print('[AuthController] ✅ Initialized - Pure Auth Mode');

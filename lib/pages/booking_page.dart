@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/booking_controller.dart';
 import '../models/booking.dart';
-import '../models/weather.dart';
 import 'booking_summary_page.dart';
 import 'booking_location_map.dart';
 import '../widgets/notes_photo_section.dart'; // ✅ IMPORT BARU
+import '../data/promotions.dart';
+import '../models/promotion.dart';
 
 class BookingPage extends StatefulWidget {
   static const String routeName = '/booking';
@@ -20,11 +21,15 @@ class _BookingPageState extends State<BookingPage> {
   final controller = Get.put(BookingController());
   late PageController _pageController;
   int _currentPage = 0;
+  bool _skipServiceStep = false;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyInitialArgsIfAny();
+    });
   }
 
   @override
@@ -33,8 +38,70 @@ class _BookingPageState extends State<BookingPage> {
     super.dispose();
   }
 
+  void _applyInitialArgsIfAny() {
+    try {
+      final args = Get.arguments;
+      if (args is! Map) return;
+
+      final promoId = args['promoId']?.toString();
+      final serviceName = args['serviceName']?.toString();
+      final serviceType = args['serviceType']?.toString();
+
+      CleaningService? serviceToSelect;
+
+      if (serviceType != null && serviceType.isNotEmpty) {
+        serviceToSelect = controller.availableServices
+            .where((s) => s.type.toLowerCase() == serviceType.toLowerCase())
+            .cast<CleaningService?>()
+            .firstWhere((_) => true, orElse: () => null);
+      }
+
+      if (serviceToSelect == null && serviceName != null && serviceName.isNotEmpty) {
+        serviceToSelect = controller.availableServices
+            .where((s) => s.name.toLowerCase().contains(serviceName.toLowerCase()) || serviceName.toLowerCase().contains(s.name.toLowerCase()))
+            .cast<CleaningService?>()
+            .firstWhere((_) => true, orElse: () => null);
+      }
+
+      Promotion? promoToApply;
+      if (promoId != null && promoId.isNotEmpty) {
+        promoToApply = promotions
+            .where((p) => p.id == promoId)
+            .cast<Promotion?>()
+            .firstWhere((_) => true, orElse: () => null);
+      }
+
+      // If promo exists but service not specified, try infer service from promo
+      if (serviceToSelect == null && promoToApply != null) {
+        final promoServiceName = promoToApply.serviceName.toLowerCase();
+        serviceToSelect = controller.availableServices
+            .where((s) {
+              final serviceLower = s.name.toLowerCase();
+              return serviceLower.contains(promoServiceName) || promoServiceName.contains(serviceLower);
+            })
+            .cast<CleaningService?>()
+            .firstWhere((_) => true, orElse: () => null);
+      }
+
+      if (serviceToSelect != null) {
+        controller.selectService(serviceToSelect);
+        // If service comes from Beranda/Promo, skip the "Pilih Layanan" step.
+        setState(() => _skipServiceStep = true);
+      }
+
+      if (promoToApply != null) {
+        controller.applyPromotion(promoToApply);
+      }
+    } catch (e) {
+      // ignore
+      print('[BookingPage] Failed to apply initial args: $e');
+    }
+  }
+
+  int get _stepCount => _skipServiceStep ? 4 : 5;
+
   void _nextPage() {
-    if (_currentPage < 4) { // ✅ UBAH DARI 3 KE 4 KARENA ADA PAGE BARU
+    if (_currentPage < _stepCount - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -81,7 +148,7 @@ class _BookingPageState extends State<BookingPage> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
-              children: List.generate(5, (index) { // ✅ UBAH KE 5
+              children: List.generate(_stepCount, (index) {
                 final isActive = index <= _currentPage;
                 return Expanded(
                   child: Container(
@@ -105,9 +172,9 @@ class _BookingPageState extends State<BookingPage> {
               onPageChanged: (page) => setState(() => _currentPage = page),
               children: [
                 _buildCustomerInfoPage(cs),
-                _buildServiceSelectionPage(cs),
+                if (!_skipServiceStep) _buildServiceSelectionPage(cs),
                 _buildLocationPage(cs),
-                _buildNotesPhotosPage(cs), // ✅ PAGE BARU
+                _buildNotesPhotosPage(cs),
                 _buildDateTimePage(cs),
               ],
             ),
@@ -129,7 +196,7 @@ class _BookingPageState extends State<BookingPage> {
                   ),
                 ),
                 
-                if (_currentPage == 4) // ✅ UBAH DARI 3 KE 4
+                if (_currentPage == _stepCount - 1)
                   ElevatedButton.icon(
                     onPressed: _validateAndProceed,
                     icon: const Icon(Icons.check),
@@ -202,6 +269,96 @@ class _BookingPageState extends State<BookingPage> {
           ),
           
           const SizedBox(height: 16),
+
+          // If service is pre-selected from Beranda/Promo, show it here so user doesn't need service step.
+          if (_skipServiceStep && controller.bookingData.value.selectedService != null) ...[
+            Card(
+              color: cs.primaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.local_offer, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Layanan dipilih dari Beranda/Promo',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: cs.onPrimaryContainer,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            controller.bookingData.value.selectedService!.name,
+                            style: TextStyle(color: cs.onPrimaryContainer),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Promo selector (so even when skipping service step, promo can still be chosen)
+            Obx(() {
+              final selectedService = controller.bookingData.value.selectedService;
+              if (selectedService == null) return const SizedBox.shrink();
+
+              final promos = controller.getActivePromotionsForSelectedService();
+              final selectedPromo = controller.bookingData.value.selectedPromotion;
+
+              return Card(
+                color: cs.surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.local_offer, color: cs.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Pilih Promo',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: cs.onSurface),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (promos.isEmpty)
+                        Text(
+                          'Tidak ada promo aktif untuk layanan ini.',
+                          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                        )
+                      else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: promos.map((promo) {
+                            final isActive = selectedPromo?.id == promo.id;
+                            return ChoiceChip(
+                              selected: isActive,
+                              label: Text('${promo.title} (-${promo.discountPercentage}%)'),
+                              onSelected: (selected) {
+                                controller.applyPromotion(selected ? promo : null);
+                              },
+                              selectedColor: promo.color.withValues(alpha: 0.2),
+                            );
+                          }).toList(),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+          ],
           
           Card(
             color: cs.surface,
@@ -327,6 +484,83 @@ class _BookingPageState extends State<BookingPage> {
                   ),
                 );
               }).toList(),
+            );
+          }),
+
+          const SizedBox(height: 16),
+
+          // Promo selector for the selected service
+          Obx(() {
+            final selectedService = controller.bookingData.value.selectedService;
+            if (selectedService == null) return const SizedBox.shrink();
+
+            final promos = controller.getActivePromotionsForSelectedService();
+            final selectedPromo = controller.bookingData.value.selectedPromotion;
+
+            return Card(
+              color: cs.surface,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.local_offer, color: cs.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Promo untuk ${selectedService.name}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (promos.isEmpty)
+                      Text(
+                        'Belum ada promo aktif untuk layanan ini.',
+                        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: promos.map((promo) {
+                          final isActive = selectedPromo?.id == promo.id;
+                          return ChoiceChip(
+                            selected: isActive,
+                            label: Text('${promo.title} (-${promo.discountPercentage}%)'),
+                            onSelected: (selected) {
+                              controller.applyPromotion(selected ? promo : null);
+                            },
+                            selectedColor: promo.color.withValues(alpha: 0.2),
+                          );
+                        }).toList(),
+                      ),
+                    if (selectedPromo != null && controller.bookingData.value.hasValidPromotion) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Promo dipakai: ${selectedPromo.title}',
+                              style: TextStyle(fontSize: 12, color: Colors.green.shade700),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => controller.applyPromotion(null),
+                            child: const Text('Hapus'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             );
           }),
         ],
@@ -515,7 +749,7 @@ class _BookingPageState extends State<BookingPage> {
           Obx(() {
             final weather = controller.currentWeather.value;
             final bookingTime = controller.bookingData.value.bookingTime;
-            final isInvalidTime = bookingTime != null && bookingTime.hour >= 10;
+            final isInvalidTime = bookingTime != null && !controller.bookingData.value.isValidBookingTime();
             
             return Column(
               children: [
@@ -559,7 +793,7 @@ class _BookingPageState extends State<BookingPage> {
                       color: isInvalidTime ? cs.error : cs.onSurface,
                     ),
                     title: Text(
-                      'Pilih Waktu (Max: 09:59)',
+                      'Pilih Waktu (08:00 - 20:00)',
                       style: TextStyle(
                         color: isInvalidTime ? cs.error : cs.onSurface,
                       ),
@@ -576,9 +810,38 @@ class _BookingPageState extends State<BookingPage> {
                     onTap: () async {
                       final time = await showTimePicker(
                         context: context,
-                        initialTime: const TimeOfDay(hour: 9, minute: 0),
+                        initialTime: const TimeOfDay(hour: 8, minute: 0),
+                        builder: (context, child) {
+                          return MediaQuery(
+                            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                            child: child!,
+                          );
+                        },
                       );
                       if (time != null) {
+                        // Validate range before setting
+                        final isValid = () {
+                          final h = time.hour;
+                          final m = time.minute;
+                          if (h < 8) return false;
+                          if (h > 20) return false;
+                          if (h == 20 && m > 0) return false;
+                          return true;
+                        }();
+
+                        if (!isValid) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Booking hanya tersedia jam 08:00 - 20:00'),
+                                backgroundColor: Colors.red,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+
                         controller.setBookingTime(time);
                       }
                     },
@@ -604,7 +867,7 @@ class _BookingPageState extends State<BookingPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Booking hanya tersedia sebelum jam 10:00 Pagi.',
+                              'Booking hanya tersedia jam 08:00 - 20:00.',
                               style: TextStyle(color: cs.error, fontSize: 12),
                             ),
                           ),

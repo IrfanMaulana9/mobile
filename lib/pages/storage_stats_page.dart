@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/storage_controller.dart';
 import '../models/hive_models.dart';
-import 'notes_page.dart'; // Added notes page import
-import 'booking_details_page.dart'; // Added booking details page import
+import 'rating_review_page.dart'; // Replaced notes page with rating review page
 
 /// Page untuk menampilkan storage statistics dan booking history
 class StorageStatsPage extends StatelessWidget {
@@ -417,11 +416,11 @@ class StorageStatsPage extends StatelessWidget {
             onPressed: () {
               Get.back();
               Get.to(
-                () => const NotesPage(),
+                () => const RatingReviewPage(),
               );
             },
-            icon: const Icon(Icons.note),
-            label: const Text('Notes'),
+            icon: const Icon(Icons.star),
+            label: const Text('Rating'),
             style: ElevatedButton.styleFrom(
               backgroundColor: cs.primary,
               foregroundColor: cs.onPrimary,

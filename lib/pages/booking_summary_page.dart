@@ -71,6 +71,7 @@ class _BookingSummaryPageState extends State<BookingSummaryPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final booking = controller.bookingData.value;
+    final promo = booking.selectedPromotion;
 
     return Scaffold(
       appBar: AppBar(
@@ -426,6 +427,15 @@ class _BookingSummaryPageState extends State<BookingSummaryPage> {
                     value: 'Rp${controller.getBasePrice().toStringAsFixed(0)}',
                     color: cs.onSurface,
                   ),
+                  if (promo != null && booking.hasValidPromotion) ...[
+                    const SizedBox(height: 8),
+                    _buildPriceTile(
+                      cs,
+                      label: 'Diskon Promo (${promo.discountPercentage}%)',
+                      value: '-Rp${controller.getPromoDiscount().toStringAsFixed(0)}',
+                      color: Colors.red,
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   _buildPriceTile(
                     cs,
@@ -499,9 +509,8 @@ class _BookingSummaryPageState extends State<BookingSummaryPage> {
   Future<void> _submitBooking() async {
     final success = await controller.submitBooking();
     if (success) {
-      final lastBooking = controller.offlineQueue.lastOrNull;
-      final bookingId = lastBooking?.id ?? '';
-      final customerName = controller.bookingData.value.customerName;
+      final bookingId = controller.lastSubmittedBookingId.value;
+      final customerName = controller.lastSubmittedCustomerName.value;
       
       // Show success snackbar
       Get.snackbar(

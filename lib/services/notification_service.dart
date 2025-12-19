@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,9 +13,9 @@ import '../firebase_options.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  print('[v0] Background message received: ${message.messageId}');
-  print('[v0] Background message data: ${message.data}');
-  print('[v0] Background message notification: ${message.notification?.title}');
+  print('Background message received: ${message.messageId}');
+  print('Background message data: ${message.data}');
+  print('Background message notification: ${message.notification?.title}');
 }
 
 class NotificationService {
@@ -25,6 +26,8 @@ class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   
+  static const platform = MethodChannel('com.mobile.modul6/notification');
+  
   final StreamController<NotificationItem> _notificationStreamController = 
       StreamController<NotificationItem>.broadcast();
   
@@ -32,6 +35,10 @@ class NotificationService {
 
   String? _fcmToken;
   String? get fcmToken => _fcmToken;
+
+  // In-memory cache for persisted notifications (so controllers/pages can read synchronously)
+  final List<NotificationItem> _cachedNotifications = <NotificationItem>[];
+  bool _cacheLoaded = false;
 
   static const String _highImportanceChannelId = 'high_importance_channel';
   static const String _highImportanceChannelName = 'High Importance Notifications';
@@ -47,7 +54,7 @@ class NotificationService {
 
   Future<void> initialize() async {
     try {
-      print('[v0] Starting FCM initialization...');
+      print('Starting FCM initialization...');
       
       NotificationSettings settings = await _firebaseMessaging.requestPermission(
         alert: true,
@@ -56,27 +63,29 @@ class NotificationService {
         provisional: false,
       );
 
-      print('[v0] Notification permission status: ${settings.authorizationStatus}');
+      print('Notification permission status: ${settings.authorizationStatus}');
 
       await _initializeLocalNotifications();
+      await _initializeNativeChannelHandlers();
+      await _loadNotificationsCache();
 
       try {
         _fcmToken = await _firebaseMessaging.getToken().timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            print('[v0] FCM token request timed out');
+            print('FCM token request timed out');
             return null;
           },
         );
-        print('[v0] FCM Token: $_fcmToken');
+        print('FCM Token: $_fcmToken');
       } catch (e) {
-        print('[v0] Error getting FCM token: $e');
-        print('[v0] Continuing without FCM token - check Firebase Console setup');
+        print('Error getting FCM token: $e');
+        print('Continuing without FCM token - check Firebase Console setup');
       }
 
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
         _fcmToken = newToken;
-        print('[v0] FCM Token refreshed: $newToken');
+        print('FCM Token refreshed: $newToken');
       });
 
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -85,16 +94,73 @@ class NotificationService {
 
       FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationOpenedApp);
 
+      await _checkInitialNotification();
+      
+      print('FCM initialization completed successfully');
+    } catch (e) {
+      print('Error initializing FCM: $e');
+      print('App will continue without push notifications');
+    }
+  }
+
+  Future<void> _loadNotificationsCache() async {
+    if (_cacheLoaded) return;
+    final loaded = await getSavedNotificationsAsync();
+    _cachedNotifications
+      ..clear()
+      ..addAll(loaded);
+    _cacheLoaded = true;
+    print('Loaded ${_cachedNotifications.length} saved notifications from storage');
+  }
+
+  Future<void> _initializeNativeChannelHandlers() async {
+    try {
+      platform.setMethodCallHandler((call) async {
+        if (call.method == 'onNotificationTapped') {
+          try {
+            final args = call.arguments;
+            if (args is Map) {
+              final data = Map<String, dynamic>.from(args);
+              print('Native notification tapped: $data');
+              _navigateToPage(data);
+            } else {
+              print('Native notification tapped with non-map args: $args');
+            }
+          } catch (e) {
+            print('Error handling native notification tap: $e');
+          }
+        }
+      });
+    } catch (e) {
+      print('Error initializing native channel handlers: $e');
+    }
+  }
+
+  Future<void> _checkInitialNotification() async {
+    try {
+      // Check dari FCM
       RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
       if (initialMessage != null) {
-        print('[v0] App opened from terminated state via notification');
+        print('App opened from terminated state via FCM notification');
+        print('Initial message data: ${initialMessage.data}');
         _handleNotificationOpenedApp(initialMessage);
+        return;
       }
+
+      // Check dari Native Android via MethodChannel
+      final Map<dynamic, dynamic>? notificationData = 
+          await platform.invokeMethod('getInitialNotification');
       
-      print('[v0] FCM initialization completed successfully');
+      if (notificationData != null && notificationData.isNotEmpty) {
+        print('App opened from terminated state via native notification');
+        print('Notification data from native: $notificationData');
+        
+        // Convert to Map<String, dynamic>
+        final data = Map<String, dynamic>.from(notificationData);
+        _navigateToPage(data);
+      }
     } catch (e) {
-      print('[v0] Error initializing FCM: $e');
-      print('[v0] App will continue without push notifications');
+      print('Error checking initial notification: $e');
     }
   }
 
@@ -121,9 +187,10 @@ class NotificationService {
       _highImportanceChannelId,
       _highImportanceChannelName,
       description: _highImportanceChannelDescription,
-      importance: Importance.high,
-      playSound: true,
+      importance: Importance.max,
+      playSound: false,
       enableVibration: true,
+      enableLights: true,
       showBadge: true,
     );
 
@@ -137,11 +204,17 @@ class NotificationService {
       description: _customSoundChannelDescription,
       importance: Importance.max,
       playSound: true,
-      sound: RawResourceAndroidNotificationSound('tungsahur'), // Custom sound from raw folder
+      sound: RawResourceAndroidNotificationSound('ketawa'),
       enableVibration: true,
+      enableLights: true,
       showBadge: true,
+      ledColor: Color.fromARGB(255, 255, 0, 0),
     );
 
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.deleteNotificationChannel(_customSoundChannelId);
+    
     await _localNotifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(customSoundChannel);
@@ -160,13 +233,13 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(progressChannel);
 
-    print('[v0] All notification channels created successfully');
+    print('All notification channels created successfully');
   }
 
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    print('[v0] Foreground message received: ${message.messageId}');
-    print('[v0] Payload data: ${message.data}');
-    print('[v0] Notification: ${message.notification?.title}');
+    print('Foreground message received: ${message.messageId}');
+    print('Payload data: ${message.data}');
+    print('Notification: ${message.notification?.title}');
 
     final notificationItem = NotificationItem(
       id: message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
@@ -178,6 +251,7 @@ class NotificationService {
     );
 
     _notificationStreamController.add(notificationItem);
+    await saveNotification(notificationItem);
 
     await _showLocalNotification(message);
   }
@@ -188,18 +262,28 @@ class NotificationService {
       _customSoundChannelName,
       channelDescription: _customSoundChannelDescription,
       importance: Importance.max,
-      priority: Priority.high,
+      priority: Priority.max,
       playSound: true,
-      sound: RawResourceAndroidNotificationSound('tungsahur'),
+      sound: RawResourceAndroidNotificationSound('ketawa'),
       enableVibration: true,
-      ticker: 'ticker',
+      enableLights: true,
+      color: Color.fromARGB(255, 255, 0, 0),
+      ledColor: Color.fromARGB(255, 255, 0, 0),
+      ledOnMs: 1000,
+      ledOffMs: 500,
+      ticker: 'New notification',
+      visibility: NotificationVisibility.public,
+      channelShowBadge: true,
+      autoCancel: true,
+      fullScreenIntent: true,
     );
 
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
-      sound: 'tungsahur.mp3',
+      sound: 'ketawa.mp3',
+      interruptionLevel: InterruptionLevel.timeSensitive,
     );
 
     const NotificationDetails notificationDetails = NotificationDetails(
@@ -214,25 +298,43 @@ class NotificationService {
       notificationDetails,
       payload: jsonEncode(message.data),
     );
+    
+    print('Local notification shown with ketawa.mp3 sound');
   }
 
   void _handleNotificationOpenedApp(RemoteMessage message) {
-    print('[v0] Notification opened: ${message.messageId}');
-    print('[v0] Notification data: ${message.data}');
+    print('Notification opened: ${message.messageId}');
+    print('Notification data: ${message.data}');
+
+    final notificationItem = NotificationItem(
+      id: message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      title: message.notification?.title ?? 'Notification',
+      body: message.notification?.body ?? '',
+      data: message.data,
+      timestamp: DateTime.now(),
+      isRead: false,
+    );
+    
+    saveNotification(notificationItem);
+    _notificationStreamController.add(notificationItem);
 
     _navigateToPage(message.data);
   }
 
   void _onNotificationTapped(NotificationResponse response) {
-    print('[v0] Local notification tapped');
-    print('[v0] Payload: ${response.payload}');
+    print('Local notification tapped');
+    print('Payload: ${response.payload}');
 
     if (response.payload != null) {
       try {
-        final data = jsonDecode(response.payload!);
-        _navigateToPage(data);
+        final decoded = jsonDecode(response.payload!);
+        if (decoded is Map) {
+          _navigateToPage(Map<String, dynamic>.from(decoded));
+        } else {
+          print('Notification payload is not a JSON map');
+        }
       } catch (e) {
-        print('[v0] Error parsing notification payload: $e');
+        print('Error parsing notification payload: $e');
       }
     }
   }
@@ -241,69 +343,97 @@ class NotificationService {
     final type = data['type'] ?? '';
     final route = data['route'] ?? '';
 
-    print('[v0] Navigating to: type=$type, route=$route');
+    print('Navigating to: type=$type, route=$route');
 
-    if (route.isNotEmpty) {
-      Get.toNamed(route);
-    } else {
-      switch (type) {
-        case 'promo':
-          Get.toNamed('/promo');
-          break;
-        case 'booking':
-        case 'order':
-          Get.toNamed('/booking-history');
-          break;
-        case 'notification':
-          Get.toNamed('/notifications');
-          break;
-        default:
-          Get.toNamed('/notifications');
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (route.isNotEmpty) {
+        print('Navigating to route: $route');
+        Get.toNamed(route);
+      } else {
+        switch (type) {
+          case 'promo':
+            print('Navigating to promo page');
+            Get.toNamed('/promo');
+            break;
+          case 'booking':
+          case 'order':
+            print('Navigating to booking history');
+            Get.toNamed('/booking-history');
+            break;
+          case 'notification':
+            print('Navigating to notifications page');
+            Get.toNamed('/notifications');
+            break;
+          default:
+            print('Navigating to notifications page (default)');
+            Get.toNamed('/notifications');
+        }
       }
-    }
+    });
   }
 
   // Save notifications to local storage
   List<NotificationItem> getSavedNotifications() {
-    return [];
+    return List<NotificationItem>.from(_cachedNotifications);
+  }
+
+  /// Async version used internally to correctly load persisted notifications
+  Future<List<NotificationItem>> getSavedNotificationsAsync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = prefs.getString('notifications');
+      if (jsonString == null || jsonString.isEmpty) return [];
+
+      final decoded = jsonDecode(jsonString);
+      if (decoded is! List) return [];
+
+      final list = decoded
+          .whereType<Map>()
+          .map((m) => NotificationItem.fromJson(Map<String, dynamic>.from(m)))
+          .toList();
+      return list;
+    } catch (e) {
+      print('Error loading saved notifications: $e');
+      return [];
+    }
   }
 
   Future<void> saveNotification(NotificationItem notification) async {
     final prefs = await SharedPreferences.getInstance();
-    final notifications = getSavedNotifications();
-    notifications.insert(0, notification);
+    // Update cache first
+    _cachedNotifications.removeWhere((n) => n.id == notification.id);
+    _cachedNotifications.insert(0, notification);
     
-    if (notifications.length > 50) {
-      notifications.removeRange(50, notifications.length);
+    if (_cachedNotifications.length > 50) {
+      _cachedNotifications.removeRange(50, _cachedNotifications.length);
     }
 
-    final jsonList = notifications.map((n) => n.toJson()).toList();
+    final jsonList = _cachedNotifications.map((n) => n.toJson()).toList();
     await prefs.setString('notifications', jsonEncode(jsonList));
   }
 
   Future<void> updateNotification(NotificationItem notification) async {
     final prefs = await SharedPreferences.getInstance();
-    final notifications = getSavedNotifications();
-    final index = notifications.indexWhere((n) => n.id == notification.id);
+    final index = _cachedNotifications.indexWhere((n) => n.id == notification.id);
     
     if (index != -1) {
-      notifications[index] = notification;
-      final jsonList = notifications.map((n) => n.toJson()).toList();
+      _cachedNotifications[index] = notification;
+      final jsonList = _cachedNotifications.map((n) => n.toJson()).toList();
       await prefs.setString('notifications', jsonEncode(jsonList));
     }
   }
 
   Future<void> deleteNotification(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    final notifications = getSavedNotifications();
-    notifications.removeWhere((n) => n.id == id);
+    _cachedNotifications.removeWhere((n) => n.id == id);
     
-    final jsonList = notifications.map((n) => n.toJson()).toList();
+    final jsonList = _cachedNotifications.map((n) => n.toJson()).toList();
     await prefs.setString('notifications', jsonEncode(jsonList));
   }
 
   Future<void> clearAllNotifications() async {
     final prefs = await SharedPreferences.getInstance();
+    _cachedNotifications.clear();
     await prefs.remove('notifications');
   }
 
@@ -318,18 +448,32 @@ class NotificationService {
       useCustomSound ? _customSoundChannelName : _highImportanceChannelName,
       channelDescription: useCustomSound ? _customSoundChannelDescription : _highImportanceChannelDescription,
       importance: Importance.max,
-      priority: Priority.high,
+      priority: Priority.max,
       playSound: true,
-      sound: useCustomSound ? const RawResourceAndroidNotificationSound('tungsahur') : null,
+      sound: useCustomSound ? const RawResourceAndroidNotificationSound('ketawa') : null,
       enableVibration: true,
-      ticker: 'ticker',
+      enableLights: true,
+      color: const Color.fromARGB(255, 255, 0, 0),
+      ledColor: const Color.fromARGB(255, 255, 0, 0),
+      ledOnMs: 1000,
+      ledOffMs: 500,
+      ticker: 'New notification',
+      visibility: NotificationVisibility.public,
+      channelShowBadge: true,
+      autoCancel: true,
+      fullScreenIntent: true,
+      styleInformation: BigTextStyleInformation(
+        body,
+        contentTitle: title,
+      ),
     );
 
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
-      sound: 'tungsahur.mp3',
+      sound: 'ketawa.mp3',
+      interruptionLevel: InterruptionLevel.timeSensitive,
     );
 
     final NotificationDetails notificationDetails = NotificationDetails(
@@ -347,17 +491,30 @@ class NotificationService {
       payload: payload,
     );
 
+    Map<String, dynamic> dataMap = {'payload': payload ?? ''};
+    if (payload != null && payload.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map) {
+          dataMap = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        // ignore payload parsing errors
+      }
+    }
+
     final notificationItem = NotificationItem(
       id: id.toString(),
       title: title,
       body: body,
-      data: {'payload': payload ?? ''},
+      data: dataMap,
       timestamp: DateTime.now(),
       isRead: false,
     );
 
     _notificationStreamController.add(notificationItem);
-    print('[v0] Notification shown with ID: $id, Custom Sound: $useCustomSound');
+    await saveNotification(notificationItem);
+    print('Notification shown with ID: $id, Custom Sound: $useCustomSound, Sound File: ketawa.mp3');
   }
 
   Future<void> showProgressNotification({
@@ -390,7 +547,7 @@ class NotificationService {
     );
 
     await _localNotifications.show(
-      999, // Fixed ID for progress notifications so they update the same notification
+      999,
       title,
       progress < maxProgress 
           ? '$progress% complete' 

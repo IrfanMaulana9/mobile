@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import '../models/hive_models.dart';
 import '../models/storage_performance.dart';
 import 'hive_service.dart';
 import 'supabase_service.dart';
@@ -17,12 +16,18 @@ class NotesSyncManager {
   final SupabaseService _supabaseService = SupabaseService();
   final Connectivity _connectivity = Connectivity();
   final PerformanceTracker _tracker = PerformanceTracker();
+
+  String _currentUserId = '';
   
   bool _isSyncing = false;
   bool _isInitialized = false;
   StreamSubscription? _connectivitySubscription;
   
   bool get isSyncing => _isSyncing;
+
+  void setCurrentUserId(String userId) {
+    _currentUserId = userId;
+  }
   
   /// Initialize sync manager and setup connectivity listener
   Future<void> init() async {
@@ -89,7 +94,13 @@ class NotesSyncManager {
       }
       
       // Get pending notes (synced = false)
-      final pendingNotes = _hiveService.getNotesByUserId('').where((note) => !note.synced).toList();
+      if (_currentUserId.isEmpty) {
+        print('[NotesSyncManager] ⚠️ No current userId set, skipping notes sync');
+        _isSyncing = false;
+        return;
+      }
+
+      final pendingNotes = _hiveService.getNotesByUserId(_currentUserId).where((note) => !note.synced).toList();
       
       if (pendingNotes.isEmpty) {
         print('[NotesSyncManager] ✅ No pending notes to sync');

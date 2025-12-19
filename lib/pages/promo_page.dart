@@ -232,7 +232,13 @@ class _PromoPageState extends State<PromoPage> {
     ColorScheme cs,
   ) {
     return GestureDetector(
-      onTap: () => Get.toNamed(BookingPage.routeName),
+      onTap: () => Get.toNamed(
+        BookingPage.routeName,
+        arguments: {
+          'promoId': promo.id,
+          'serviceName': promo.serviceName,
+        },
+      ),
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(color: cs.outlineVariant),
@@ -509,7 +515,13 @@ class _PromoPageState extends State<PromoPage> {
                       SizedBox(
                         height: 32,
                         child: ElevatedButton(
-                          onPressed: () => Get.toNamed(BookingPage.routeName),
+                          onPressed: () => Get.toNamed(
+                            BookingPage.routeName,
+                            arguments: {
+                              'promoId': promo.id,
+                              'serviceName': promo.serviceName,
+                            },
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: cs.primary,
                             padding: const EdgeInsets.symmetric(

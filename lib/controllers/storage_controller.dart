@@ -219,6 +219,104 @@ class StorageController extends GetxController {
   }
   
   // ============ SYNC MANAGEMENT ============
+
+  DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    if (v is String) return DateTime.tryParse(v);
+    return null;
+  }
+
+  double _toDouble(dynamic v) {
+    if (v == null) return 0.0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0.0;
+  }
+
+  /// Pull bookings from Supabase (multi-device support) and merge into Hive.
+  /// If [removeMissingSynced] is true, locally-synced bookings that no longer exist in cloud will be removed.
+  Future<void> syncBookingsFromCloud({bool removeMissingSynced = true}) async {
+    try {
+      if (!isOnline.value) return;
+      if (!supabaseService.isAuthenticated) return;
+
+      print('[StorageController] ☁️ Pulling bookings from cloud...');
+      final cloud = await supabaseService.getBookings();
+      final cloudIds = <String>{};
+
+      for (final m in cloud) {
+        final id = (m['id'] ?? '').toString();
+        if (id.isEmpty) continue;
+        cloudIds.add(id);
+
+        final remoteUpdated = _parseDate(m['updated_at']) ?? _parseDate(m['created_at']) ?? DateTime.now();
+
+        final existing = hiveService.getBooking(id);
+
+        final parsed = HiveBooking(
+          id: id,
+          customerName: (m['customer_name'] ?? '').toString(),
+          phoneNumber: (m['phone_number'] ?? '').toString(),
+          serviceName: (m['service_name'] ?? '').toString(),
+          latitude: _toDouble(m['latitude']),
+          longitude: _toDouble(m['longitude']),
+          address: (m['address'] ?? '').toString(),
+          bookingDate: _parseDate(m['booking_date']) ?? DateTime.now(),
+          bookingTime: (m['booking_time'] ?? '').toString(),
+          totalPrice: _toDouble(m['total_price']),
+          status: (m['status'] ?? 'pending').toString(),
+          createdAt: _parseDate(m['created_at']) ?? DateTime.now(),
+          synced: true,
+          notes: m['notes']?.toString(),
+          photoUrls: m['photo_urls'] is List ? List<String>.from(m['photo_urls']) : <String>[],
+        )..updatedAt = remoteUpdated;
+
+        if (existing == null) {
+          await hiveService.addBooking(parsed);
+          await hiveService.markBookingAsSynced(id);
+          continue;
+        }
+
+        final localUpdated = existing.updatedAt ?? existing.createdAt;
+
+        // Don't overwrite unsynced local edits (offline-first). Otherwise, cloud wins if newer.
+        if (!existing.synced) {
+          continue;
+        }
+
+        if (remoteUpdated.isAfter(localUpdated)) {
+          existing.customerName = parsed.customerName;
+          existing.phoneNumber = parsed.phoneNumber;
+          existing.serviceName = parsed.serviceName;
+          existing.latitude = parsed.latitude;
+          existing.longitude = parsed.longitude;
+          existing.address = parsed.address;
+          existing.bookingDate = parsed.bookingDate;
+          existing.bookingTime = parsed.bookingTime;
+          existing.totalPrice = parsed.totalPrice;
+          existing.status = parsed.status;
+          existing.notes = parsed.notes;
+          existing.photoUrls = parsed.photoUrls;
+          existing.updatedAt = remoteUpdated;
+          existing.synced = true;
+          await hiveService.updateBooking(existing);
+        }
+      }
+
+      if (removeMissingSynced) {
+        final local = hiveService.getAllBookings();
+        for (final b in local) {
+          if (b.synced && !cloudIds.contains(b.id)) {
+            await hiveService.deleteBooking(b.id);
+          }
+        }
+      }
+
+      print('[StorageController] ✅ Cloud pull completed. Cloud bookings: ${cloud.length}');
+    } catch (e) {
+      print('[StorageController] ❌ Cloud pull error: $e');
+    }
+  }
   
   /// Manual sync trigger
   Future<void> syncNow() async {
@@ -227,6 +325,9 @@ class StorageController extends GetxController {
       print('[StorageController] 🔄 Manual sync started...');
       await syncManager.syncNow();
       pendingBookingsCount.value = syncManager.getPendingCount();
+
+      // Also pull cloud data so multi-device works after refresh
+      await syncBookingsFromCloud(removeMissingSynced: true);
       
       Get.snackbar(
         'Success',

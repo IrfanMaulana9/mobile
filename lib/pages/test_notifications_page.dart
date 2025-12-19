@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:convert'; // Added jsonEncode import for payload encoding
 import '../services/notification_service.dart';
 import '../controllers/notification_controller.dart';
 
@@ -18,6 +19,7 @@ class _TestNotificationsPageState extends State<TestNotificationsPage> {
   bool _isPlayingSound = false;
   bool _isShowingNotification = false;
   bool _isShowingProgress = false;
+  bool _isSendingPromo = false;
 
   @override
   Widget build(BuildContext context) {
@@ -43,44 +45,40 @@ class _TestNotificationsPageState extends State<TestNotificationsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Instruction card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Instruction for Custom Sound',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
-                  ),
+          // Prominent Promo Notification button for Eksperimen 2 & 3
+          _buildTestCard(
+            context: context,
+            icon: Icons.local_offer,
+            iconColor: const Color(0xFFFF6B6B),
+            iconBgColor: const Color(0xFFFF6B6B).withOpacity(0.1),
+            title: '🎉 Notifikasi Promo (EKSPERIMEN 2 & 3)',
+            subtitle: 'Kirim notifikasi yang navigasi ke halaman promo. Untuk testing dari Firebase Console, baca FIREBASE_CONSOLE_GUIDE.md',
+            buttonText: 'Kirim',
+            buttonColor: const Color(0xFFFF6B6B),
+            isLoading: _isSendingPromo,
+            onPressed: () async {
+              setState(() => _isSendingPromo = true);
+              
+              await notificationService.showNotification(
+                title: '🎉 Promo Spesial!',
+                body: 'Diskon 50% untuk layanan pembersihan! Tap untuk lihat detail promo.',
+                payload: jsonEncode({
+                  'type': 'promo',
+                  'route': '/promo',
+                }),
+                useCustomSound: true,
+              );
+              
+              setState(() => _isSendingPromo = false);
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('✓ Notifikasi promo terkirim! Tap notifikasi untuk navigasi ke halaman promo.'),
+                  duration: Duration(seconds: 3),
+                  backgroundColor: Color(0xFFFF6B6B),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Terdapat file audio default yang akan diputar. Tugas Anda adalah menemukan di mana file tersebut disimpan dalam struktur project Android dan menggantinya dengan audio pilihan Anda sendiri!',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: cs.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Clue: Periksa folder resource Android.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: cs.onSurfaceVariant,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
           
           const SizedBox(height: 16),
@@ -101,8 +99,8 @@ class _TestNotificationsPageState extends State<TestNotificationsPage> {
               
               await notificationService.showNotification(
                 title: 'Custom Sound Test',
-                body: 'Playing custom audio notification with tungsahur.mp3',
-                payload: 'custom_audio_test',
+                body: 'Playing custom audio notification with ketawa.mp3',
+                payload: jsonEncode({'type': 'notification'}),
               );
               
               await Future.delayed(const Duration(seconds: 2));
@@ -137,7 +135,7 @@ class _TestNotificationsPageState extends State<TestNotificationsPage> {
               await notificationService.showNotification(
                 title: 'Instant Test',
                 body: 'This is an instant notification test. Tap to see details!',
-                payload: 'instant_test',
+                payload: jsonEncode({'type': 'notification'}),
               );
               
               await Future.delayed(const Duration(milliseconds: 500));
@@ -169,7 +167,6 @@ class _TestNotificationsPageState extends State<TestNotificationsPage> {
             onPressed: () async {
               setState(() => _isShowingProgress = true);
               
-              // Simulate progress notification
               for (int i = 0; i <= 100; i += 20) {
                 await notificationService.showProgressNotification(
                   title: 'Downloading File',
@@ -182,7 +179,6 @@ class _TestNotificationsPageState extends State<TestNotificationsPage> {
                 }
               }
               
-              // Show completion notification
               await notificationService.showNotification(
                 title: 'Download Complete',
                 body: 'File has been downloaded successfully!',
@@ -233,7 +229,6 @@ class _TestNotificationsPageState extends State<TestNotificationsPage> {
                   title: 'Test Notifikasi',
                   subtitle: 'Coba berbagai jenis notifikasi',
                   onTap: () {
-                    // Already on this page, maybe show a dialog with more options
                     showDialog(
                       context: context,
                       builder: (context) => AlertDialog(

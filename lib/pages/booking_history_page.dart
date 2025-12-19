@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../controllers/storage_controller.dart';
 import '../controllers/booking_controller.dart';
+import '../controllers/rating_review_controller.dart';
 import '../models/hive_models.dart';
 
 class BookingHistoryPage extends StatefulWidget {
@@ -129,7 +130,9 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
           return RefreshIndicator(
             onRefresh: () async {
               if (storageController.isOnline.value) {
+                // Push pending (offline-first) then pull latest cloud bookings for this user
                 await storageController.syncNow();
+                await storageController.syncBookingsFromCloud(removeMissingSynced: true);
               }
               _refreshBookings();
             },
@@ -215,7 +218,6 @@ class BookingHistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd MMM yyyy', 'id_ID');
-    final timeFormat = DateFormat('HH:mm', 'id_ID');
     
     final statusColor = _getStatusColor();
     final statusIcon = _getStatusIcon();
@@ -451,6 +453,53 @@ class BookingHistoryCard extends StatelessWidget {
                 ),
               ),
             ],
+            
+            if (booking.status == 'confirmed') ...[
+              const SizedBox(height: 8),
+              Builder(
+                builder: (context) {
+                  final ratingController = Get.find<RatingReviewController>();
+                  final hasRating = ratingController.hasRatingForBooking(booking.id);
+                  
+                  if (hasRating) {
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.star, color: Colors.amber, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Rating sudah diberikan',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  
+                  return SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showRatingDialog(context, booking),
+                      icon: const Icon(Icons.star_rate, size: 18),
+                      label: const Text('Berikan Rating & Review'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber.shade100,
+                        foregroundColor: Colors.amber[900],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -493,6 +542,122 @@ class BookingHistoryCard extends StatelessWidget {
         snackPosition: SnackPosition.BOTTOM,
       );
     }
+  }
+
+  void _showRatingDialog(BuildContext context, HiveBooking booking) {
+    final ratingController = Get.find<RatingReviewController>();
+    int selectedRating = 5;
+    final reviewController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Berikan Rating & Review'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  booking.serviceName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Berikan Rating:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (index) {
+                    final star = index + 1;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          selectedRating = star;
+                        });
+                      },
+                      child: Icon(
+                        star <= selectedRating ? Icons.star : Icons.star_border,
+                        color: Colors.amber,
+                        size: 40,
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    '$selectedRating Bintang',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.amber[900],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Tulis Review:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: reviewController,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    hintText: 'Bagaimana pengalaman Anda dengan layanan ini?',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final review = reviewController.text.trim();
+                if (review.isEmpty) {
+                  Get.snackbar('Error', 'Review tidak boleh kosong');
+                  return;
+                }
+                
+                final success = await ratingController.createRatingReview(
+                  bookingId: booking.id,
+                  customerName: booking.customerName,
+                  serviceName: booking.serviceName,
+                  rating: selectedRating,
+                  review: review,
+                );
+                
+                if (success && context.mounted) {
+                  Navigator.pop(context);
+                  onStatusChanged(); // Refresh booking list
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Kirim'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildDetailItem({

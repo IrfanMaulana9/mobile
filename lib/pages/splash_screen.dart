@@ -43,7 +43,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     Timer(const Duration(seconds: 3), () {
       final authController = Get.find<AuthController>();
       if (mounted) {
-        Get.offNamed(authController.isAuthenticated.value ? '/' : '/auth');
+        final isAuthenticated = authController.isAuthenticated.value;
+        print('[SplashScreen] Navigation: isAuthenticated = $isAuthenticated');
+        Get.offNamed(isAuthenticated ? '/' : '/auth');
       }
     });
   }

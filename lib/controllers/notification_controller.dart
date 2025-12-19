@@ -19,7 +19,7 @@ class NotificationController extends GetxController {
     isLoading.value = true;
     try {
       await _notificationService.initialize();
-      _loadNotifications();
+      await _loadNotifications();
       
       // Listen for new notifications
       _notificationService.notificationStream.listen((notificationItem) {
@@ -32,9 +32,10 @@ class NotificationController extends GetxController {
     }
   }
 
-  void _loadNotifications() {
-    // Load saved notifications from storage
-    notifications.value = _notificationService.getSavedNotifications();
+  Future<void> _loadNotifications() async {
+    // Load saved notifications from storage (async read, then in-memory cache makes future reads fast)
+    final saved = await _notificationService.getSavedNotificationsAsync();
+    notifications.value = saved;
   }
 
   void addNotification(NotificationItem notification) {

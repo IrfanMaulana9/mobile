@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:intl/intl.dart';
-import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
@@ -14,6 +12,7 @@ import 'controllers/gps_controller.dart';
 import 'controllers/network_location_controller.dart';
 import 'controllers/experiment_controller.dart';
 import 'controllers/notification_controller.dart';
+import 'controllers/rating_review_controller.dart';
 import 'pages/splash_screen.dart';
 import 'pages/home_page.dart';
 import 'pages/weather_demo.dart';
@@ -22,19 +21,9 @@ import 'pages/booking_history_page.dart';
 import 'pages/storage_stats_page.dart';
 import 'pages/performance_stats_page.dart';
 import 'pages/auth_page.dart';
-import 'pages/notes_page.dart';
-import 'pages/note_create_standalone_page.dart';
-import 'pages/note_edit_standalone_page.dart';
-import 'pages/notes_list_page.dart';
+import 'pages/rating_review_page.dart';
 import 'pages/promo_page.dart';
-import 'pages/gps_tracker_page.dart';
-import 'pages/location_tracker_page.dart';
-import 'pages/gps_menu_page.dart';
-import 'pages/gps_location_page.dart';
-import 'pages/network_location_page.dart';
-import 'pages/experiment_management_page.dart';
 import 'pages/notifications_page.dart';
-import 'pages/test_notifications_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -83,6 +72,9 @@ void main() async {
     
     final notificationController = NotificationController();
     Get.put(notificationController);
+    
+    final ratingReviewController = RatingReviewController();
+    Get.put(ratingReviewController);
     
     runApp(CleaningServiceApp());
   } catch (e, stackTrace) {
@@ -257,48 +249,16 @@ class CleaningServiceApp extends StatelessWidget {
           page: () => const AuthPage(),
         ),
         GetPage(
-          name: NotesPage.routeName,
-          page: () => NotesPage(),
-        ),
-        GetPage(
-          name: '/note-create',
-          page: () => NoteCreateStandalonePage(),
-        ),
-        GetPage(
-          name: '/note-edit',
-          page: () => NoteEditStandalonePage(),
-        ),
-        GetPage(
-          name: NotesListPage.routeName,
-          page: () => NotesListPage(),
+          name: RatingReviewPage.routeName,
+          page: () => const RatingReviewPage(),
         ),
         GetPage(
           name: PromoPage.routeName,
           page: () => const PromoPage(),
         ),
         GetPage(
-          name: GPSMenuPage.routeName,
-          page: () => const GPSMenuPage(),
-        ),
-        GetPage(
-          name: GPSLocationPage.routeName,
-          page: () => const GPSLocationPage(),
-        ),
-        GetPage(
-          name: NetworkLocationPage.routeName,
-          page: () => const NetworkLocationPage(),
-        ),
-        GetPage(
-          name: ExperimentManagementPage.routeName,
-          page: () => const ExperimentManagementPage(),
-        ),
-        GetPage(
           name: NotificationsPage.routeName,
           page: () => const NotificationsPage(),
-        ),
-        GetPage(
-          name: TestNotificationsPage.routeName,
-          page: () => const TestNotificationsPage(),
         ),
       ],
     ));

@@ -15,7 +15,7 @@ class NotificationConstants {
   static const String progressChannelDescription = 'This channel is used for progress notifications.';
 
   // Sound Files (stored in android/app/src/main/res/raw/)
-  static const String customSoundFile = 'tungsahur'; // tungsahur.mp3
+  static const String customSoundFile = 'ketawa'; // ketawa.mp3
   static const String alternativeSound1 = 'hehe'; // hehe.mp3
   static const String alternativeSound2 = 'kaget'; // kaget.mp3
 

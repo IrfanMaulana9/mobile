@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:convert';
 import 'dart:io';
+import '../models/promotion.dart';
 import '../models/booking.dart';
 import '../services/weather_service.dart';
 import '../services/location_service.dart';
+import '../services/notification_service.dart';
+import '../data/promotions.dart';
 import '../models/hive_models.dart';
 import '../controllers/storage_controller.dart';
 
@@ -17,6 +21,12 @@ class BookingController extends GetxController {
   final currentWeather = Rxn();
   final isSaving = false.obs;
   final selectedLocationMode = 'hybrid'.obs; // added location mode tracking
+
+  // Last submission info (used by BookingSummaryPage + notifications)
+  final lastSubmittedBookingId = ''.obs;
+  final lastSubmittedCustomerName = ''.obs;
+  final lastSubmittedServiceName = ''.obs;
+  final lastSubmittedTotalPrice = 0.0.obs;
 
   final availableServices = <CleaningService>[
     CleaningService(
@@ -111,7 +121,44 @@ class BookingController extends GetxController {
 
   void selectService(CleaningService service) {
     bookingData.update((data) => data!.selectedService = service);
+    // If currently selected promo doesn't match the newly selected service, clear it.
+    final promo = bookingData.value.selectedPromotion;
+    if (promo != null) {
+      final promoService = promo.serviceName.trim().toLowerCase();
+      final serviceName = service.name.trim().toLowerCase();
+      final matches = promoService == serviceName ||
+          promoService.contains(serviceName) ||
+          serviceName.contains(promoService);
+      if (!matches) {
+        bookingData.update((data) => data!.selectedPromotion = null);
+      }
+    }
     print('[BookingController] Service selected: ${service.name}');
+  }
+
+  void applyPromotion(Promotion? promo) {
+    bookingData.update((data) => data!.selectedPromotion = promo);
+    if (promo == null) {
+      print('[BookingController] Promo cleared');
+    } else {
+      print('[BookingController] Promo applied: ${promo.title}');
+    }
+  }
+
+  List<Promotion> getActivePromotionsForSelectedService() {
+    final service = bookingData.value.selectedService;
+    if (service == null) return [];
+    final serviceName = service.name.trim().toLowerCase();
+
+    return promotions
+        .where((p) => p.isActive)
+        .where((p) {
+          final promoService = p.serviceName.trim().toLowerCase();
+          return promoService == serviceName ||
+              promoService.contains(serviceName) ||
+              serviceName.contains(promoService);
+        })
+        .toList();
   }
 
   void setBookingDate(DateTime date) {
@@ -227,6 +274,14 @@ class BookingController extends GetxController {
     return bookingData.value.selectedService?.price ?? 0;
   }
 
+  double getPromoDiscount() {
+    return bookingData.value.promoDiscountAmount;
+  }
+
+  double getDiscountedServicePrice() {
+    return bookingData.value.discountedServicePrice;
+  }
+
   bool hasWeatherWarnings() {
     if (currentWeather.value == null) return false;
     final weather = currentWeather.value;
@@ -292,6 +347,11 @@ class BookingController extends GetxController {
     isSaving.value = true;
     
     try {
+      // Capture data for UI + notifications before any reset happens
+      final customerNameSnapshot = bookingData.value.customerName;
+      final serviceNameSnapshot = bookingData.value.selectedService?.name ?? '';
+      final totalSnapshot = bookingData.value.calculateTotalPrice();
+
       // ✅ GUNAKAN CONSTRUCTOR BARU YANG AMAN
       final hiveBooking = HiveBooking(
         customerName: bookingData.value.customerName,
@@ -313,6 +373,29 @@ class BookingController extends GetxController {
       final success = await storageController.saveBookingLocally(hiveBooking);
       
       if (success) {
+        // Save last submission info (used by BookingSummaryPage)
+        lastSubmittedBookingId.value = hiveBooking.id;
+        lastSubmittedCustomerName.value = customerNameSnapshot;
+        lastSubmittedServiceName.value = serviceNameSnapshot;
+        lastSubmittedTotalPrice.value = totalSnapshot;
+
+        // Local notification: booking successfully created (tap -> booking history)
+        try {
+          final notificationService = NotificationService();
+          await notificationService.showNotification(
+            title: '✅ Booking berhasil dibuat',
+            body: '${hiveBooking.serviceName} untuk ${hiveBooking.customerName}. Total Rp${hiveBooking.totalPrice.toStringAsFixed(0)}. Tap untuk lihat riwayat.',
+            payload: jsonEncode({
+              'type': 'booking',
+              'route': '/booking-history',
+              'bookingId': hiveBooking.id,
+            }),
+            useCustomSound: true,
+          );
+        } catch (e) {
+          print('[BookingController] Notification error (ignored): $e');
+        }
+
         // Save last address to prefs
         await storageController.setLastAddress(
           bookingData.value.location!.address
