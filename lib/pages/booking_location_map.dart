@@ -563,16 +563,21 @@ class _LocationMapPickerState extends State<LocationMapPicker> {
                       onPressed: isTooFar
                           ? null
                           : () {
+                              // Stop live tracking jika aktif
                               if (_isLiveTrackingActive) {
                                 _stopLiveLocationTracking();
                               }
                               
+                              // Panggil callback dengan lokasi yang dipilih
                               widget.onLocationSelected(
                                 _selectedLocation.latitude,
                                 _selectedLocation.longitude,
                                 _selectedAddress,
                               );
-                              Get.back();
+                              
+                              // Kembali ke halaman sebelumnya
+                              // Lokasi sudah terpilih melalui callback
+                              Navigator.pop(context);
                             },
                       icon: const Icon(Icons.check_circle),
                       label: Text(isTooFar ? 'Terlalu Jauh' : 'Konfirmasi'),

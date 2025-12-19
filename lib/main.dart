@@ -24,6 +24,7 @@ import 'pages/auth_page.dart';
 import 'pages/rating_review_page.dart';
 import 'pages/promo_page.dart';
 import 'pages/notifications_page.dart';
+import 'pages/booking_confirmation_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -259,6 +260,10 @@ class CleaningServiceApp extends StatelessWidget {
         GetPage(
           name: NotificationsPage.routeName,
           page: () => const NotificationsPage(),
+        ),
+        GetPage(
+          name: BookingConfirmationPage.routeName,
+          page: () => const BookingConfirmationPage(),
         ),
       ],
     ));

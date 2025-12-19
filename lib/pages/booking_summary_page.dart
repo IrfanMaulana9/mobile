@@ -521,15 +521,9 @@ class _BookingSummaryPageState extends State<BookingSummaryPage> {
         duration: const Duration(seconds: 2),
       );
       
-      // Navigate to notes page after 1 second delay
+      // Navigate to booking confirmation page with QR Code after 1 second delay
       await Future.delayed(const Duration(seconds: 1));
-      Get.offAllNamed(
-        '/booking-notes',
-        parameters: {
-          'bookingId': bookingId,
-          'customerName': customerName,
-        },
-      );
+      Get.offAllNamed('/booking-confirmation');
     }
   }
 

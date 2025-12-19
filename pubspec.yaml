@@ -55,6 +55,9 @@ dependencies:
 
   # ✅ NEW DEPENDENCIES for chart support
   fl_chart: ^0.65.0
+  
+  # QR Code generation
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
