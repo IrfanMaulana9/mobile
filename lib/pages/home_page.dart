@@ -613,8 +613,6 @@ class _HomePageState extends State<HomePage> {
                         cs, '✓', 'Ahlimu yang berpengalaman', Colors.green),
                     _buildBenefitItem(
                         cs, '✓', 'Garansi uang kembali 100%', Colors.green),
-                    _buildBenefitItem(cs, '✓', 'Baik pagi hari berbeda tarian',
-                        Colors.orange),
                     _buildBenefitItem(cs, '✓',
                         'Mudah dijadwalkan dan interaktif', Colors.green),
                     _buildBenefitItem(

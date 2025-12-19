@@ -119,34 +119,6 @@ class _AccountPageState extends State<AccountPage> {
                   _buildSettingsItem(
                     context,
                     cs,
-                    icon: Icons.language,
-                    title: 'Bahasa',
-                    subtitle: 'Ubah bahasa aplikasi',
-                    onTap: () {
-                      Get.snackbar(
-                        'Bahasa',
-                        'Fitur akan segera tersedia',
-                        snackPosition: SnackPosition.BOTTOM,
-                      );
-                    },
-                  ),
-                  _buildSettingsItem(
-                    context,
-                    cs,
-                    icon: Icons.privacy_tip_outlined,
-                    title: 'Privasi & Keamanan',
-                    subtitle: 'Atur privasi akun Anda',
-                    onTap: () {
-                      Get.snackbar(
-                        'Privasi',
-                        'Fitur akan segera tersedia',
-                        snackPosition: SnackPosition.BOTTOM,
-                      );
-                    },
-                  ),
-                  _buildSettingsItem(
-                    context,
-                    cs,
                     icon: Icons.help_outline,
                     title: 'Bantuan & Dukungan',
                     subtitle: 'Hubungi tim dukungan kami',
