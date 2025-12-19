@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 import '../models/rating_review.dart';
 import '../services/supabase_service.dart';
+import '../services/hive_service.dart';
+import '../models/hive_models.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/storage_controller.dart';
 
@@ -22,14 +24,38 @@ class RatingReviewController extends GetxController {
     await loadAllRatings();
   }
 
-  /// Load all ratings from Supabase
+  /// Load all ratings from Supabase and Hive (merge both sources)
   Future<void> loadAllRatings() async {
     isLoading.value = true;
     try {
-      final data = await supabaseService.getAllRatingReviews();
-      ratings.value = data.map((map) => RatingReview.fromMap(map)).toList();
+      // Load from Supabase
+      final supabaseData = await supabaseService.getAllRatingReviews();
+      final supabaseRatings = supabaseData.map((map) => RatingReview.fromMap(map)).toList();
+      
+      // Load from Hive (local storage)
+      final hiveService = HiveService();
+      final hiveRatings = hiveService.getAllRatingReviews();
+      final hiveRatingMaps = hiveRatings.map((r) => r.toRatingReviewMap()).toList();
+      final hiveRatingReviews = hiveRatingMaps.map((map) => RatingReview.fromMap(map)).toList();
+      
+      // Merge both sources, avoiding duplicates (prefer Supabase if both exist)
+      final Map<String, RatingReview> mergedRatings = {};
+      
+      // Add Hive ratings first
+      for (var rating in hiveRatingReviews) {
+        mergedRatings[rating.id] = rating;
+      }
+      
+      // Add/override with Supabase ratings
+      for (var rating in supabaseRatings) {
+        mergedRatings[rating.id] = rating;
+      }
+      
+      ratings.value = mergedRatings.values.toList();
       // Sort by created_at descending (newest first)
       ratings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      print('[RatingReviewController] ✅ Loaded ${ratings.length} ratings (${supabaseRatings.length} from Supabase, ${hiveRatingReviews.length} from Hive)');
     } catch (e) {
       print('[RatingReviewController] ❌ Error loading ratings: $e');
     } finally {
@@ -52,7 +78,7 @@ class RatingReviewController extends GetxController {
 
     isSaving.value = true;
     try {
-      final ratingId = await supabaseService.insertRatingReview(
+      final savedId = await supabaseService.insertRatingReview(
         bookingId: bookingId,
         userId: authController.currentUserId,
         customerName: customerName,
@@ -61,7 +87,8 @@ class RatingReviewController extends GetxController {
         review: review,
       );
 
-      if (ratingId != null) {
+      if (savedId != null) {
+        // Successfully saved (either to Supabase or Hive fallback)
         // Reload all ratings
         await loadAllRatings();
         Get.snackbar('Sukses', 'Rating & Review berhasil dikirim');

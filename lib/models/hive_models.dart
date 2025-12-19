@@ -347,3 +347,112 @@ class HiveNote extends HiveObject {
     );
   }
 }
+
+/// Hive model untuk Rating Review
+@HiveType(typeId: 4)
+class HiveRatingReview extends HiveObject {
+  @HiveField(0)
+  String id = '';
+  
+  @HiveField(1)
+  String bookingId = '';
+  
+  @HiveField(2)
+  String userId = '';
+  
+  @HiveField(3)
+  String customerName = '';
+  
+  @HiveField(4)
+  String serviceName = '';
+  
+  @HiveField(5)
+  int rating = 0; // 1-5 stars
+  
+  @HiveField(6)
+  String review = '';
+  
+  @HiveField(7)
+  DateTime createdAt = DateTime.now();
+  
+  @HiveField(8)
+  DateTime updatedAt = DateTime.now();
+  
+  @HiveField(9)
+  bool synced = false; // Whether synced to Supabase
+  
+  @HiveField(10)
+  String? supabaseId; // ID from Supabase after sync
+
+  HiveRatingReview({
+    String? id,
+    String? bookingId,
+    String? userId,
+    String? customerName,
+    String? serviceName,
+    int? rating,
+    String? review,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? synced,
+    this.supabaseId,
+  }) {
+    this.id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    this.bookingId = bookingId ?? '';
+    this.userId = userId ?? '';
+    this.customerName = customerName ?? '';
+    this.serviceName = serviceName ?? '';
+    this.rating = rating ?? 0;
+    this.review = review ?? '';
+    this.createdAt = createdAt ?? DateTime.now();
+    this.updatedAt = updatedAt ?? DateTime.now();
+    this.synced = synced ?? false;
+  }
+  
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'booking_id': bookingId,
+    'user_id': userId,
+    'customer_name': customerName,
+    'service_name': serviceName,
+    'rating': rating,
+    'review': review,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+    'synced': synced,
+    'supabase_id': supabaseId,
+  };
+
+  factory HiveRatingReview.fromJson(Map<String, dynamic> json) {
+    return HiveRatingReview(
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      bookingId: json['booking_id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      customerName: json['customer_name']?.toString() ?? '',
+      serviceName: json['service_name']?.toString() ?? '',
+      rating: (json['rating'] ?? 0).toInt(),
+      review: json['review']?.toString() ?? '',
+      createdAt: json['created_at'] is String 
+          ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
+          : json['created_at'] ?? DateTime.now(),
+      updatedAt: json['updated_at'] is String 
+          ? DateTime.tryParse(json['updated_at']) ?? DateTime.now()
+          : json['updated_at'] ?? DateTime.now(),
+      synced: json['synced'] ?? false,
+      supabaseId: json['supabase_id']?.toString(),
+    );
+  }
+  
+  // Convert to RatingReview model
+  Map<String, dynamic> toRatingReviewMap() => {
+    'id': id,
+    'booking_id': bookingId,
+    'user_id': userId,
+    'customer_name': customerName,
+    'service_name': serviceName,
+    'rating': rating,
+    'review': review,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
+}

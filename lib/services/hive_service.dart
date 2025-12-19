@@ -2,6 +2,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/hive_models.dart';
 import '../models/storage_performance.dart';
 import '../adapters/hive_note_adapter.dart'; // Import manual adapter untuk HiveNote
+import '../adapters/hive_rating_adapter.dart'; // Import manual adapter untuk HiveRatingReview
 
 /// Service untuk Hive - local structured storage
 class HiveService {
@@ -15,6 +16,7 @@ class HiveService {
   Box<HiveCachedWeather>? _weatherBox;
   Box<HiveLastLocation>? _locationBox;
   Box<HiveNote>? _noteBox;
+  Box<HiveRatingReview>? _ratingBox;
   
   final PerformanceTracker _tracker = PerformanceTracker();
   
@@ -38,18 +40,23 @@ class HiveService {
       if (!Hive.isAdapterRegistered(3)) {
         Hive.registerAdapter(HiveNoteAdapter()); // Manual adapter
       }
+      if (!Hive.isAdapterRegistered(4)) {
+        Hive.registerAdapter(HiveRatingReviewAdapter()); // Manual adapter
+      }
       
       // Open boxes
       _bookingBox = await Hive.openBox<HiveBooking>('bookings');
       _weatherBox = await Hive.openBox<HiveCachedWeather>('weather_cache');
       _locationBox = await Hive.openBox<HiveLastLocation>('locations');
       _noteBox = await Hive.openBox<HiveNote>('notes');
+      _ratingBox = await Hive.openBox<HiveRatingReview>('ratings');
       
       print('[HiveService] ✅ Initialized successfully');
       print('[HiveService] 📦 Bookings: ${_bookingBox?.length ?? 0}');
       print('[HiveService] 🌤️ Weather cache: ${_weatherBox?.length ?? 0}');
       print('[HiveService] 📍 Locations: ${_locationBox?.length ?? 0}');
       print('[HiveService] 📝 Notes: ${_noteBox?.length ?? 0}');
+      print('[HiveService] ⭐ Ratings: ${_ratingBox?.length ?? 0}');
     } catch (e) {
       print('[HiveService] ❌ Initialization failed: $e');
       rethrow;
@@ -693,6 +700,145 @@ class HiveService {
     }
   }
 
+  // ============ RATING REVIEW CRUD ============
+  
+  /// Add rating review
+  Future<void> addRatingReview(HiveRatingReview rating) async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      rating.updatedAt = DateTime.now();
+      await _ratingBox?.put(rating.id, rating);
+      
+      stopwatch.stop();
+      _tracker.addLog(StoragePerformanceLog(
+        operation: 'write',
+        storageType: 'hive',
+        dataKey: 'rating_${rating.id}',
+        executionTimeMs: stopwatch.elapsedMilliseconds,
+        success: true,
+        timestamp: DateTime.now(),
+      ));
+      
+      print('[HiveService] ✅ Rating review added: ${rating.id}');
+    } catch (e) {
+      stopwatch.stop();
+      _tracker.addLog(StoragePerformanceLog(
+        operation: 'write',
+        storageType: 'hive',
+        dataKey: 'rating_${rating.id}',
+        executionTimeMs: stopwatch.elapsedMilliseconds,
+        success: false,
+        errorMessage: e.toString(),
+        timestamp: DateTime.now(),
+      ));
+      print('[HiveService] ❌ Add rating error: $e');
+      rethrow;
+    }
+  }
+  
+  /// Get all rating reviews
+  List<HiveRatingReview> getAllRatingReviews() {
+    final stopwatch = Stopwatch()..start();
+    try {
+      final ratings = _ratingBox?.values.toList() ?? [];
+      
+      stopwatch.stop();
+      _tracker.addLog(StoragePerformanceLog(
+        operation: 'read',
+        storageType: 'hive',
+        dataKey: 'all_ratings',
+        executionTimeMs: stopwatch.elapsedMilliseconds,
+        success: true,
+        timestamp: DateTime.now(),
+      ));
+      
+      print('[HiveService] ✅ Fetched ${ratings.length} rating reviews');
+      return ratings;
+    } catch (e) {
+      stopwatch.stop();
+      _tracker.addLog(StoragePerformanceLog(
+        operation: 'read',
+        storageType: 'hive',
+        dataKey: 'all_ratings',
+        executionTimeMs: stopwatch.elapsedMilliseconds,
+        success: false,
+        errorMessage: e.toString(),
+        timestamp: DateTime.now(),
+      ));
+      print('[HiveService] ❌ Get all ratings error: $e');
+      return [];
+    }
+  }
+  
+  /// Get rating review by ID
+  HiveRatingReview? getRatingReview(String id) {
+    try {
+      return _ratingBox?.get(id);
+    } catch (e) {
+      print('[HiveService] ❌ Get rating error: $e');
+      return null;
+    }
+  }
+  
+  /// Delete rating review
+  Future<void> deleteRatingReview(String id) async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      await _ratingBox?.delete(id);
+      
+      stopwatch.stop();
+      _tracker.addLog(StoragePerformanceLog(
+        operation: 'write',
+        storageType: 'hive',
+        dataKey: 'rating_delete_$id',
+        executionTimeMs: stopwatch.elapsedMilliseconds,
+        success: true,
+        timestamp: DateTime.now(),
+      ));
+      
+      print('[HiveService] ✅ Rating review deleted: $id');
+    } catch (e) {
+      stopwatch.stop();
+      _tracker.addLog(StoragePerformanceLog(
+        operation: 'write',
+        storageType: 'hive',
+        dataKey: 'rating_delete_$id',
+        executionTimeMs: stopwatch.elapsedMilliseconds,
+        success: false,
+        errorMessage: e.toString(),
+        timestamp: DateTime.now(),
+      ));
+      print('[HiveService] ❌ Delete rating error: $e');
+      rethrow;
+    }
+  }
+  
+  /// Get unsynced rating reviews
+  List<HiveRatingReview> getUnsyncedRatingReviews() {
+    try {
+      final allRatings = getAllRatingReviews();
+      return allRatings.where((r) => !r.synced).toList();
+    } catch (e) {
+      print('[HiveService] ❌ Get unsynced ratings error: $e');
+      return [];
+    }
+  }
+  
+  /// Mark rating as synced
+  Future<void> markRatingAsSynced(String id, String supabaseId) async {
+    try {
+      final rating = _ratingBox?.get(id);
+      if (rating != null) {
+        rating.synced = true;
+        rating.supabaseId = supabaseId;
+        await _ratingBox?.put(id, rating);
+        print('[HiveService] ✅ Rating marked as synced: $id');
+      }
+    } catch (e) {
+      print('[HiveService] ❌ Mark rating synced error: $e');
+    }
+  }
+
   // ============ CLEAR ALL ============
   
   /// Clear all data
@@ -703,6 +849,7 @@ class HiveService {
       await _weatherBox?.clear();
       await _locationBox?.clear();
       await _noteBox?.clear();
+      await _ratingBox?.clear();
       
       stopwatch.stop();
       _tracker.addLog(StoragePerformanceLog(
@@ -736,6 +883,7 @@ class HiveService {
     await _weatherBox?.close();
     await _locationBox?.close();
     await _noteBox?.close();
+    await _ratingBox?.close();
     print('[HiveService] 📦 All boxes closed');
   }
   

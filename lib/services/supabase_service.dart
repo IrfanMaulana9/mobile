@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart'; // Added shared_preferences untuk menyimpan session
 import '../models/hive_models.dart';
 import '../models/storage_performance.dart';
+import 'hive_service.dart';
 
 /// Service untuk Supabase - cloud storage, auth, dan realtime
 class SupabaseService {
@@ -1533,7 +1534,7 @@ class SupabaseService {
         print('[SupabaseService] ❌ Insert failed: ${response.statusCode}');
         print('[SupabaseService] Response: $responseBody');
 
-        // Check if table doesn't exist (404 error)
+        // Check if table doesn't exist (404 error) - fallback to Hive
         if (response.statusCode == 404) {
           try {
             final errorData = jsonDecode(responseBody) as Map<String, dynamic>;
@@ -1541,8 +1542,29 @@ class SupabaseService {
             if (message.contains('Could not find the table') || 
                 message.contains('rating_reviews')) {
               print('[SupabaseService] ⚠️ Table "rating_reviews" does not exist in Supabase');
-              print('[SupabaseService] 💡 Please create the table in your Supabase database');
-              print('[SupabaseService] 💡 Rating review will not be saved to cloud');
+              print('[SupabaseService] 💡 Saving to local storage (Hive) as fallback');
+              
+              // Fallback to Hive
+              try {
+                final hiveService = HiveService();
+                final hiveRating = HiveRatingReview(
+                  id: ratingData['id'] as String,
+                  bookingId: bookingId,
+                  userId: userId,
+                  customerName: customerName,
+                  serviceName: serviceName,
+                  rating: rating,
+                  review: review,
+                  createdAt: DateTime.parse(ratingData['created_at'] as String),
+                  updatedAt: DateTime.parse(ratingData['updated_at'] as String),
+                  synced: false,
+                );
+                await hiveService.addRatingReview(hiveRating);
+                print('[SupabaseService] ✅ Rating review saved to local storage');
+                return ratingData['id'] as String;
+              } catch (e) {
+                print('[SupabaseService] ❌ Failed to save to Hive: $e');
+              }
             }
           } catch (e) {
             // Ignore JSON parse errors
@@ -1619,7 +1641,7 @@ class SupabaseService {
         final responseBody = response.body;
         print('[SupabaseService] ❌ Fetch failed: ${response.statusCode}');
         
-        // Check if table doesn't exist (404 error)
+        // Check if table doesn't exist (404 error) - fallback to Hive
         if (response.statusCode == 404) {
           try {
             final errorData = jsonDecode(responseBody) as Map<String, dynamic>;
@@ -1627,7 +1649,18 @@ class SupabaseService {
             if (message.contains('Could not find the table') || 
                 message.contains('rating_reviews')) {
               print('[SupabaseService] ⚠️ Table "rating_reviews" does not exist in Supabase');
-              print('[SupabaseService] 💡 Returning empty list');
+              print('[SupabaseService] 💡 Loading from local storage (Hive) as fallback');
+              
+              // Fallback to Hive
+              try {
+                final hiveService = HiveService();
+                final hiveRatings = hiveService.getAllRatingReviews();
+                final ratings = hiveRatings.map((r) => r.toRatingReviewMap()).toList();
+                print('[SupabaseService] ✅ Loaded ${ratings.length} rating reviews from local storage');
+                return ratings;
+              } catch (e) {
+                print('[SupabaseService] ❌ Failed to load from Hive: $e');
+              }
             }
           } catch (e) {
             // Ignore JSON parse errors
