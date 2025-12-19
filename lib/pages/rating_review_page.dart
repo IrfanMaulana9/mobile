@@ -14,10 +14,22 @@ class RatingReviewPage extends StatelessWidget {
     final controller = Get.put(RatingReviewController());
     final cs = Theme.of(context).colorScheme;
 
+    // Load ratings when page is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadAllRatings();
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rating & Review'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => controller.loadAllRatings(),
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
       body: Obx(() {
         if (controller.isLoading.value) {

@@ -28,15 +28,45 @@ class RatingReviewController extends GetxController {
   Future<void> loadAllRatings() async {
     isLoading.value = true;
     try {
+      print('[RatingReviewController] 🔄 Loading ratings...');
+      
       // Load from Supabase
-      final supabaseData = await supabaseService.getAllRatingReviews();
-      final supabaseRatings = supabaseData.map((map) => RatingReview.fromMap(map)).toList();
+      List<RatingReview> supabaseRatings = [];
+      try {
+        final supabaseData = await supabaseService.getAllRatingReviews();
+        supabaseRatings = supabaseData.map((map) {
+          try {
+            return RatingReview.fromMap(map);
+          } catch (e) {
+            print('[RatingReviewController] ⚠️ Error parsing Supabase rating: $e');
+            return null;
+          }
+        }).whereType<RatingReview>().toList();
+        print('[RatingReviewController] ✅ Loaded ${supabaseRatings.length} ratings from Supabase');
+      } catch (e) {
+        print('[RatingReviewController] ⚠️ Error loading from Supabase: $e');
+      }
       
       // Load from Hive (local storage)
-      final hiveService = HiveService();
-      final hiveRatings = hiveService.getAllRatingReviews();
-      final hiveRatingMaps = hiveRatings.map((r) => r.toRatingReviewMap()).toList();
-      final hiveRatingReviews = hiveRatingMaps.map((map) => RatingReview.fromMap(map)).toList();
+      List<RatingReview> hiveRatingReviews = [];
+      try {
+        final hiveService = HiveService();
+        final hiveRatings = hiveService.getAllRatingReviews();
+        print('[RatingReviewController] 📦 Found ${hiveRatings.length} ratings in Hive');
+        
+        for (var hiveRating in hiveRatings) {
+          try {
+            final map = hiveRating.toRatingReviewMap();
+            final rating = RatingReview.fromMap(map);
+            hiveRatingReviews.add(rating);
+          } catch (e) {
+            print('[RatingReviewController] ⚠️ Error parsing Hive rating ${hiveRating.id}: $e');
+          }
+        }
+        print('[RatingReviewController] ✅ Loaded ${hiveRatingReviews.length} ratings from Hive');
+      } catch (e) {
+        print('[RatingReviewController] ⚠️ Error loading from Hive: $e');
+      }
       
       // Merge both sources, avoiding duplicates (prefer Supabase if both exist)
       final Map<String, RatingReview> mergedRatings = {};
@@ -51,13 +81,15 @@ class RatingReviewController extends GetxController {
         mergedRatings[rating.id] = rating;
       }
       
+      // Update reactive list
       ratings.value = mergedRatings.values.toList();
       // Sort by created_at descending (newest first)
       ratings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
-      print('[RatingReviewController] ✅ Loaded ${ratings.length} ratings (${supabaseRatings.length} from Supabase, ${hiveRatingReviews.length} from Hive)');
-    } catch (e) {
+      print('[RatingReviewController] ✅ Total ${ratings.length} ratings loaded (${supabaseRatings.length} from Supabase, ${hiveRatingReviews.length} from Hive)');
+    } catch (e, stackTrace) {
       print('[RatingReviewController] ❌ Error loading ratings: $e');
+      print('[RatingReviewController] Stack trace: $stackTrace');
     } finally {
       isLoading.value = false;
     }
@@ -89,10 +121,39 @@ class RatingReviewController extends GetxController {
 
       if (savedId != null) {
         // Successfully saved (either to Supabase or Hive fallback)
-        // Reload all ratings
+        print('[RatingReviewController] ✅ Rating saved with ID: $savedId');
+        
+        // Force reload all ratings to ensure UI updates
         await loadAllRatings();
-        Get.snackbar('Sukses', 'Rating & Review berhasil dikirim');
-        return true;
+        
+        // Double check that the rating was added
+        final allRatings = ratings.value;
+        final newRating = allRatings.firstWhere(
+          (r) => r.id == savedId,
+          orElse: () => RatingReview(
+            id: '',
+            bookingId: '',
+            userId: '',
+            customerName: '',
+            serviceName: '',
+            rating: 0,
+            review: '',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        );
+        
+        if (newRating.id.isNotEmpty) {
+          print('[RatingReviewController] ✅ Rating confirmed in list: ${newRating.id}');
+          Get.snackbar('Sukses', 'Rating & Review berhasil dikirim');
+          return true;
+        } else {
+          print('[RatingReviewController] ⚠️ Rating saved but not found in list, forcing reload...');
+          await Future.delayed(const Duration(milliseconds: 500));
+          await loadAllRatings();
+          Get.snackbar('Sukses', 'Rating & Review berhasil dikirim');
+          return true;
+        }
       } else {
         Get.snackbar('Error', 'Gagal mengirim rating & review');
         return false;
@@ -106,8 +167,17 @@ class RatingReviewController extends GetxController {
     }
   }
 
-  /// Check if booking already has rating
+  /// Check if booking already has rating (by current user)
   bool hasRatingForBooking(String bookingId) {
+    if (!authController.isAuthenticated.value) return false;
+    final currentUserId = authController.currentUserId;
+    return ratings.any((r) => 
+      r.bookingId == bookingId && r.userId == currentUserId
+    );
+  }
+  
+  /// Check if booking already has rating (by any user)
+  bool hasAnyRatingForBooking(String bookingId) {
     return ratings.any((r) => r.bookingId == bookingId);
   }
 

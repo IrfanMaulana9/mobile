@@ -36,17 +36,33 @@ class RatingReview {
   }
 
   factory RatingReview.fromMap(Map<String, dynamic> map) {
-    return RatingReview(
-      id: map['id'] as String,
-      bookingId: map['booking_id'] as String,
-      userId: map['user_id'] as String,
-      customerName: map['customer_name'] as String,
-      serviceName: map['service_name'] as String,
-      rating: map['rating'] as int,
-      review: map['review'] as String,
-      createdAt: DateTime.parse(map['created_at'] as String),
-      updatedAt: DateTime.parse(map['updated_at'] as String),
-    );
+    try {
+      return RatingReview(
+        id: map['id']?.toString() ?? '',
+        bookingId: map['booking_id']?.toString() ?? '',
+        userId: map['user_id']?.toString() ?? '',
+        customerName: map['customer_name']?.toString() ?? '',
+        serviceName: map['service_name']?.toString() ?? '',
+        rating: (map['rating'] is int) 
+            ? map['rating'] as int 
+            : int.tryParse(map['rating']?.toString() ?? '0') ?? 0,
+        review: map['review']?.toString() ?? '',
+        createdAt: map['created_at'] is String
+            ? DateTime.parse(map['created_at'] as String)
+            : (map['created_at'] is DateTime 
+                ? map['created_at'] as DateTime 
+                : DateTime.now()),
+        updatedAt: map['updated_at'] is String
+            ? DateTime.parse(map['updated_at'] as String)
+            : (map['updated_at'] is DateTime 
+                ? map['updated_at'] as DateTime 
+                : DateTime.now()),
+      );
+    } catch (e) {
+      print('[RatingReview] ❌ Error parsing map: $e');
+      print('[RatingReview] Map data: $map');
+      rethrow;
+    }
   }
 }
 

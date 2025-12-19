@@ -456,49 +456,77 @@ class BookingHistoryCard extends StatelessWidget {
             
             if (booking.status == 'confirmed') ...[
               const SizedBox(height: 8),
-              Builder(
-                builder: (context) {
-                  final ratingController = Get.find<RatingReviewController>();
-                  final hasRating = ratingController.hasRatingForBooking(booking.id);
-                  
-                  if (hasRating) {
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.star, color: Colors.amber, size: 20),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Rating sudah diberikan',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+              Obx(() {
+                final ratingController = Get.find<RatingReviewController>();
+                final hasRating = ratingController.hasRatingForBooking(booking.id);
+                
+                if (hasRating) {
+                  final existingRating = ratingController.getRatingForBooking(booking.id);
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.star, color: Colors.amber, size: 20),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Rating sudah diberikan',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
+                          ],
+                        ),
+                        if (existingRating != null) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: List.generate(5, (index) {
+                              return Icon(
+                                index < existingRating.rating 
+                                    ? Icons.star 
+                                    : Icons.star_border,
+                                color: Colors.amber,
+                                size: 16,
+                              );
+                            }),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            existingRating.review,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
-                      ),
-                    );
-                  }
-                  
-                  return SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showRatingDialog(context, booking),
-                      icon: const Icon(Icons.star_rate, size: 18),
-                      label: const Text('Berikan Rating & Review'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amber.shade100,
-                        foregroundColor: Colors.amber[900],
-                      ),
+                      ],
                     ),
                   );
-                },
-              ),
+                }
+                
+                return SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showRatingDialog(context, booking),
+                    icon: const Icon(Icons.star_rate, size: 18),
+                    label: const Text('Berikan Rating & Review'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber.shade100,
+                      foregroundColor: Colors.amber[900],
+                    ),
+                  ),
+                );
+              }),
             ],
           ],
         ),
@@ -635,6 +663,8 @@ class BookingHistoryCard extends StatelessWidget {
                   return;
                 }
                 
+                Navigator.pop(context); // Close dialog first
+                
                 final success = await ratingController.createRatingReview(
                   bookingId: booking.id,
                   customerName: booking.customerName,
@@ -644,8 +674,10 @@ class BookingHistoryCard extends StatelessWidget {
                 );
                 
                 if (success && context.mounted) {
-                  Navigator.pop(context);
-                  onStatusChanged(); // Refresh booking list
+                  // Refresh booking list to update UI
+                  onStatusChanged();
+                  // Also refresh ratings page if it's open
+                  ratingController.loadAllRatings();
                 }
               },
               style: ElevatedButton.styleFrom(
